@@ -1,0 +1,94 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\Role;
+use App\Models\User;
+use App\Models\Branch;
+use App\Models\RoleUser;
+use App\Enums\UserTypeEnum;
+use Faker\Factory as Faker;
+use Illuminate\Database\Seeder;
+use Database\Seeders\RoleSeeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Cartalyst\Sentinel\Laravel\Facades\Activation;
+
+class UserSeeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     *
+     * @return void
+     */
+public function run()
+{
+    $faker = Faker::create('en_BD');
+
+    // Find roles by name instead of slug
+    $superAdminRole = Role::where('name', 'Super Admin')->first();
+    $adminRole = Role::where('name', 'Admin')->first();
+
+    // Create roles if they don't exist (without slug)
+    if (!$adminRole) {
+        $adminRole = Role::create([
+            'name' => 'Admin',
+            'permissions' => null
+        ]);
+    }
+
+    if (!$superAdminRole) {
+        $superAdminRole = Role::create([
+            'name' => 'Super Admin',
+            'permissions' => null
+        ]);
+    }
+
+    $roleSeeder = new RoleSeeder();
+    
+    // Create admin user
+    $admin = User::firstOrCreate(
+        ['email' => 'admin@admin.com'],
+        [
+            'first_name' => 'Admin',
+            'last_name' => '',
+            'dashboard' => 'admin',
+            'permissions' => $roleSeeder->adminPermissions(),
+            'password' => bcrypt(123456),
+            'user_type' => UserTypeEnum::STAFF,
+        ]
+    );
+
+    // Create super admin user
+    $superAdmin = User::firstOrCreate(
+        ['email' => 'superadmin@admin.com'],
+        [
+            'first_name' => 'Super',
+            'last_name' => 'Admin',
+            'dashboard' => 'admin',
+            'permissions' => $roleSeeder->superAdminPermissions(),
+            'password' => bcrypt(123456),
+            'user_type' => UserTypeEnum::STAFF,
+        ]
+    );
+
+    // Handle activations and role assignments safely
+    if ($admin->wasRecentlyCreated) {
+        $activation = Activation::create($admin);
+        Activation::complete($admin, $activation->code);
+        if (!$admin->roles()->where('role_id', $adminRole->id)->exists()) {
+            $admin->roles()->attach($adminRole->id);
+        }
+        $this->command->info('Admin user created and activated');
+    }
+
+    if ($superAdmin->wasRecentlyCreated) {
+        $activation = Activation::create($superAdmin);
+        Activation::complete($superAdmin, $activation->code);
+        if (!$superAdmin->roles()->where('role_id', $superAdminRole->id)->exists()) {
+            $superAdmin->roles()->attach($superAdminRole->id);
+        }
+        $this->command->info('Super Admin user created and activated');
+    }
+}
+}
