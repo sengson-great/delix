@@ -54,7 +54,7 @@ class CompanyAccount extends Model
 
     public function merchantAccount()
     {
-        return $this->hasOne(MerchantAccount::class, 'company_account_id', 'id');
+        return $this->hasOne(MerchantAccount::class, 'payment_withdraw_id', 'id');
     }
 
     public function user(){

@@ -40,23 +40,21 @@ class ThirdPartyController extends Controller
         return view('admin.third-parties.edit', compact( 'third_party'));
     }
 
-    public function store(ThirdPartyRequest $request)
-    {
-        if (isDemoMode()) {
-            Toastr::error(__('this_function_is_disabled_in_demo_server'));
-            return back();
+public function store(ThirdPartyRequest $request)
+{
+    try {
+        // Pass the entire request object, not just validated data
+        $result = $this->third_parties->store($request);
+        
+        if ($result) {
+            return redirect()->route('admin.third-parties')->with('success', __('created_successfully'));
+        } else {
+            return back()->with('danger', __('something_went_wrong_please_try_again'));
         }
-        try {
-            if ($this->third_parties->store($request)):
-                return redirect()->route('admin.third-parties')->with('success', __('created_successfully'));
-            else:
-                return back()->with('danger', __('something_went_wrong_please_try_again'));
-            endif;
-        } catch (\Exception $e){
-            $success = __('something_went_wrong_please_try_again');
-            return response()->json($success,404);
-        }
+    } catch (\Exception $e) {
+        dd($e->getMessage(), $e->getFile(), $e->getLine());
     }
+}
 
     public function update(ThirdPartyRequest $request)
     {

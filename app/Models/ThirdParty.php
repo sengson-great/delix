@@ -11,6 +11,28 @@ class ThirdParty extends Model
 {
     use HasFactory;
 
+    protected $fillable = [
+        'name',
+        'slug',
+        'type',
+        'provider',
+        'description',
+        'api_key',
+        'api_secret',
+        'api_url',
+        'api_version',
+        'username',
+        'password',
+        'merchant_id',
+        'store_id',
+        'signature_key',
+        'address',
+        'phone_number',
+        'status',
+        'created_by',
+        'updated_by'
+    ];
+
     protected $casts = [
         'status' => StatusEnum::class,
     ];
@@ -20,15 +42,14 @@ class ThirdParty extends Model
         parent::boot();
 
         static::creating(function ($model) {
-            $user               = Sentinel::check();
-            $model->created_by  = $user ? $user->id : null;
-            $model->created_at  = date('Y-m-d H:i:s');
+            $user = Sentinel::check();
+            $model->created_by = $user ? $user->id : null;
+            $model->status = $model->status ?? StatusEnum::ACTIVE; // Default status
         });
 
         static::updating(function ($model) {
-            $user               = Sentinel::check();
-            $model->updated_by  = $user ? $user->id : null;
-            $model->updated_at  = date('Y-m-d H:i:s');
+            $user = Sentinel::check();
+            $model->updated_by = $user ? $user->id : null;
         });
     }
 

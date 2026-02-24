@@ -115,10 +115,10 @@ class HomeController extends Controller
 
             return back();
         } catch (\Exception $e) {
-            // dd($e->getMessage());
-            Toastr::error('something_went_wrong_please_try_again', 'Error!');
+            dd($e->getMessage());
+            //Toastr::error('something_went_wrong_please_try_again', 'Error!');
 
-            return back();
+            //return back();
         }
     }
 

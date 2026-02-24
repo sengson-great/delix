@@ -33,7 +33,9 @@ class ExpenseController extends Controller
 
     public function create()
     {
-        $accounts         = $this->accounts->all()->where('user_id', Sentinel::getUser()->id);
+        $accounts = Account::where('is_active', 1)->get();
+        //$accounts         = $this->accounts->all()->where('user_id', Sentinel::getUser()->id);
+        \Log::info('Accounts found: ' . $accounts->count());
         return view('admin.accounts.expenses.create', compact('accounts'));
     }
 

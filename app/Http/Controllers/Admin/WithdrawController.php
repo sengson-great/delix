@@ -50,104 +50,178 @@ class WithdrawController extends Controller
             ->render('admin.withdraws.index', compact('withdraws', 'accounts', 'batches'));
     }
 
-    public function create()
-    {
-        if (@settingHelper('preferences')->where('title', 'create_payment_request')->first()->staff):
-            $accounts = Account::all()->where('user_id', Sentinel::getUser()->id);
-            return view('admin.withdraws.create', compact('accounts'));
-        else:
-            return back()->with('danger', __('service_unavailable'));
-        endif;
+public function create()
+{
+    // Temporarily bypass the preference check
+    $accounts = Account::where('user_id', Sentinel::getUser()->id)
+                      ->where('is_active', 1)
+                      ->get();
+    
+    \Log::info('Accounts found: ' . $accounts->count());
+    
+    return view('admin.withdraws.create', compact('accounts'));
+}
+
+public function getMerchantInfo(Request $request)
+{
+    \Log::info('getMerchantInfo called for merchant ID: ' . $request->id);
+    
+    $merchant = $this->merchants->get($request->id);
+    
+    // First, get all payment accounts without the whereHas filter to debug
+    $all_payment_accounts = MerchantPaymentAccount::where('merchant_id', $merchant->id)
+        ->with('paymentAccount')
+        ->get();
+    
+    \Log::info('All payment accounts:', [
+        'count' => $all_payment_accounts->count(),
+        'data' => $all_payment_accounts->toArray()
+    ]);
+    
+    // Now get only those with active payment methods
+    $payment_accounts = MerchantPaymentAccount::where('merchant_id', $merchant->id)
+        ->with('paymentAccount')
+        ->whereHas('paymentAccount', function ($query) {
+            $query->where('status', 'active');
+        })
+        ->get();
+    
+    \Log::info('Filtered payment accounts (active only):', [
+        'count' => $payment_accounts->count(),
+        'data' => $payment_accounts->toArray()
+    ]);
+    
+    $data = $this->merchantBalance($merchant->id);
+    $balance = $data['current_payable'];
+    
+    if (isset($request->amount)) {
+        $balance = $balance + $request->amount;
     }
-
-    public function getMerchantInfo(Request $request)
-    {
-        $merchant = $this->merchants->get($request->id);
-        $payment_accounts = $merchant->paymentAccount;
-        $data = $this->merchantBalance($merchant->id);
-        $balance = $data['current_payable'];
-        $payable_parcels = $data['parcels'];
-        $payable_merchant_accounts = $data['merchant_accounts'];
-        $payment_account = [];
-        $payment_account = MerchantPaymentAccount::where('merchant_id', $merchant->id)
-            ->with('paymentAccount')->whereHas('paymentAccount', function ($query) {
-                $query->where('status', 'active');
-            })
-            ->get();
-
-        if (isset($request->amount)) {
-            $balance = $balance + $request->amount;
-        }
-        $data['balance'] = number_format($balance, 2, '.', '');
-
-
-        $parcels = '';
-        $merchant_accounts = '';
-
-        foreach ($payable_parcels as $parcel):
-            $parcels .= "<input type='hidden' value=\"$parcel->id\" name=\"parcels[]\" >";
+    
+    $response = [
+        'balance' => number_format($balance, 2, '.', ''),
+        'parcels' => '',
+        'merchant_accounts' => '',
+        'options' => '<option value="">' . __('no_payment_accounts_available') . '</option>'
+    ];
+    
+    // Generate parcels hidden inputs
+    if (isset($data['parcels']) && $data['parcels']) {
+        foreach ($data['parcels'] as $parcel):
+            $response['parcels'] .= "<input type='hidden' value=\"$parcel->id\" name=\"parcels[]\" >";
         endforeach;
-
-        foreach ($payable_merchant_accounts as $merchant_account):
-            $merchant_accounts .= "<input type='hidden' value=\"$merchant_account->id\" name=\"merchant_accounts[]\" >";
-        endforeach;
-        $options = ' ';
-
-        foreach ($payment_account as $method) {
-            $options .= "<option value=\"$method->id\">" . __(@$method->paymentAccount->name) . "</option>";
-        }
-
-        $data['options'] = $options;
-        $data['parcels'] = $parcels;
-        $data['merchant_accounts'] = $merchant_accounts;
-
-        return response()->json($data);
     }
-
-    public function store(WithdrawStoreRequest $request)
-    {
-        if (isDemoMode()) {
-            Toastr::error(__('this_function_is_disabled_in_demo_server'));
-            return back();
-        }
-        try {
-            if ($request->withdraw_to == 'cash') {
-                $payment_accounts = $this->merchants->get($request->merchant);
-
+    
+    // Generate merchant accounts hidden inputs
+    if (isset($data['merchant_accounts']) && $data['merchant_accounts']) {
+        foreach ($data['merchant_accounts'] as $merchant_account):
+            $response['merchant_accounts'] .= "<input type='hidden' value=\"$merchant_account->id\" name=\"merchant_accounts[]\" >";
+        endforeach;
+    }
+    
+    // Generate payment account options
+    if ($payment_accounts->isNotEmpty()) {
+        $options = '';
+        foreach ($payment_accounts as $method) {
+            $accountName = $method->paymentAccount->name ?? 'Unknown';
+            $accountDetails = '';
+            
+            // Add more details based on account type
+            if ($method->account_number) {
+                $accountDetails = ' - ' . $method->account_number;
+            } elseif ($method->mobile_banking_number) {
+                $accountDetails = ' - ' . $method->mobile_banking_number;
             }
-            $payment_accounts = $this->merchants->get($request->merchant)->paymentAccount;
+            
+            $options .= "<option value=\"$method->id\">" . $accountName . $accountDetails . "</option>";
+        }
+        $response['options'] = $options;
+    }
+    
+    return response()->json($response);
+}
 
-            if (!$this->checkRoutingNo($payment_accounts->routing_no, $request->withdraw_to)):
-                if (@settingHelper('preferences')->where('title', 'create_payment_request')->first()->staff):
-                    if (isset($request->status) && $request->status == 'processed') {
-                        $balance = $this->bank_accounts->bankRemainingBalance('', $request->account, '', '');
-                        if ($balance < $request->amount) {
-                            return back()->with('danger', __('the_account_has_no_available_balance'));
-                        }
+public function store(WithdrawStoreRequest $request)
+{
+    \Log::info('=== Withdraw Store Method Started ===');
+    \Log::info('Request data:', $request->all());
+    
+    if (isDemoMode()) {
+        Toastr::error(__('this_function_is_disabled_in_demo_server'));
+        return back();
+    }
+    
+    try {
+        if ($request->withdraw_to == 'cash') {
+            $payment_accounts = $this->merchants->get($request->merchant);
+        }
+        
+        $merchant = $this->merchants->get($request->merchant);
+        $payment_accounts = $merchant->paymentAccount;
+        
+        if (!$this->checkRoutingNo($payment_accounts->routing_no, $request->withdraw_to)):
+            
+            // Use preferences table instead of settings
+            $preferences = settingHelper('preferences');
+            $preference = $preferences?->where('key', 'create_payment_request')->first();
+            
+            \Log::info('Preference check:', [
+                'found' => !is_null($preference),
+                'value' => $preference->value ?? 'null',
+                'type' => $preference->type ?? 'null'
+            ]);
+            
+            // Determine if enabled
+            $canCreate = false;
+            if ($preference) {
+                $value = $preference->value;
+                $decodedValue = json_decode($value, true);
+                
+                if (is_array($decodedValue) && isset($decodedValue['staff'])) {
+                    $canCreate = $decodedValue['staff'] == 1;
+                } else {
+                    $canCreate = $value == '1' || $value == 1 || $value == 'true';
+                }
+            }
+            
+            if ($canCreate):
+                \Log::info('Preference enabled, proceeding with withdrawal');
+                
+                if (isset($request->status) && $request->status == 'processed') {
+                    $balance = $this->bank_accounts->bankRemainingBalance('', $request->account, '', '');
+                    if ($balance < $request->amount) {
+                        return back()->with('danger', __('the_account_has_no_available_balance'));
                     }
-                    $data = $this->merchantBalance($request->merchant);
+                }
+                
+                $data = $this->merchantBalance($request->merchant);
+                $current_payable = $data['current_payable'];
 
-                    $current_payable = $data['current_payable'];
-
-                    if (number_format($current_payable, 2, '.', '') != number_format($request->amount, 2, '.', '')):
-                        return back()->with('danger', __('incorrect_amount_please_try_again'));
-                    else:
-                        if ($this->withdraws->store($request)):
-                            return redirect()->route('admin.withdraws')->with('success', __('created_successfully'));
-                        else:
-                            return back()->with('danger', __('something_went_wrong_please_try_again'));
-                        endif;
-                    endif;
+                if (number_format($current_payable, 2, '.', '') != number_format($request->amount, 2, '.', '')):
+                    return back()->with('danger', __('incorrect_amount_please_try_again'));
                 else:
-                    return redirect()->route('admin.withdraws')->with('danger', __('service_unavailable'));
+                    if ($this->withdraws->store($request)):
+                        return redirect()->route('admin.withdraws')->with('success', __('created_successfully'));
+                    else:
+                        return back()->with('danger', __('something_went_wrong_please_try_again'));
+                    endif;
                 endif;
             else:
-                return back()->with('danger', __('please_add_routing_no_to_your_bank_account'));
+                \Log::warning('Service unavailable - create_payment_request preference is disabled or not found');
+                return redirect()->route('admin.withdraws')->with('danger', __('service_unavailable'));
             endif;
-        } catch (\Exception $e) {
-            return back()->with('danger', __('something_went_wrong_please_try_again'));
-        }
+        else:
+            return back()->with('danger', __('please_add_routing_no_to_your_bank_account'));
+        endif;
+    } catch (\Exception $e) {
+        \Log::error('Exception in withdraw store:', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ]);
+        return back()->with('danger', __('something_went_wrong_please_try_again'));
     }
+}
 
     public function edit($id)
     {

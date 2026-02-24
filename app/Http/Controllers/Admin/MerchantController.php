@@ -58,32 +58,59 @@ class MerchantController extends Controller
 
 
     public function create()
-    {
-        $cod_charges        = CodCharge::all();
-        $charges            = Charge::all();
-        $branchs            = Branch::all();
-        return view('admin.merchants.create', compact('charges', 'cod_charges', 'branchs'));
+{
+    $cod_charges = CodCharge::all();
+    $charges = Charge::all();
+    $branchs = Branch::all();
+    
+    // Debug
+    if ($cod_charges === null) {
+        dd('cod_charges is null');
     }
+    if ($charges === null) {
+        dd('charges is null');
+    }
+    if ($branchs === null) {
+        dd('branchs is null');
+    }
+    
+    return view('admin.merchants.create', compact('charges', 'cod_charges', 'branchs'));
+}
 
 
-    public function store(MerchantStoreRequest $request)
-    {
-        if (isDemoMode()) {
-            Toastr::error(__('this_function_is_disabled_in_demo_server'));
-            return back();
-        }
-        try {
-            $result = $this->merchants->store($request);
-            if ($result->status):
-                return redirect()->route($result->redirect_to)->with($result->redirect_class, $result->msg);
-            else:
-                return redirect()->back()->with($result->redirect_class, $result->msg)->withInput();
-            endif;
-        } catch (\Exception $e) {
-            Log::error('Merchant Store Error ' . $e->getMessage());
-            return back()->with('danger', $e->getMessage() ?? __('something_went_wrong_please_try_again'))->withInput();
-        }
+public function store(DeliveryManStoreRequest $request)
+{
+    if (isDemoMode()) {
+        Toastr::error(__('this_function_is_disabled_in_demo_server'));
+        return back();
     }
+    
+    try {
+        $result = $this->delivery_man->store($request);
+        
+        // Debug - check the logs
+        \Log::info('Delivery Man Store Result', [
+            'result' => $result,
+            'request' => $request->all()
+        ]);
+        
+        if ($result) {
+            Toastr::success(__('created_successfully'));
+            return redirect()->route('delivery.man.index')->with('success', __('created_successfully'));
+        } else {
+            Toastr::error(__('something_went_wrong_please_try_again'));
+            return back()->with('error', __('something_went_wrong_please_try_again'))->withInput();
+        }
+    } catch (\Exception $e) {
+        \Log::error('Delivery Man Store Exception', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        Toastr::error(__('something_went_wrong_please_try_again'));
+        return back()->with('error', __('something_went_wrong_please_try_again'))->withInput();
+    }
+}
 
     public function edit($id)
     {

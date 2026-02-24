@@ -3,6 +3,29 @@
 @section('title')
     {{ (@$parcel ? __('duplicate') : __('add')) . ' ' . __('parcel') }}
 @endsection
+
+{{-- Debug Section - Remove after fixing --}}
+@php
+    echo '<!-- DEBUG INFO -->';
+    echo '<!-- Charges exists: ' . (isset($charges) ? 'YES' : 'NO') . ' -->';
+    echo '<!-- Charges count: ' . (isset($charges) ? $charges->count() : '0') . ' -->';
+    
+    if(isset($charges) && $charges->count() > 0) {
+        echo '<!-- First charge: ' . $charges->first()->weight . ' - ' . ($charges->first()->charge ?? '0') . ' -->';
+    }
+    
+    // Check preferences for delivery area
+    $preferences = settingHelper('preferences');
+    echo '<!-- Preferences exists: ' . ($preferences ? 'YES' : 'NO') . ' -->';
+    
+    if($preferences && $preferences->count() > 0) {
+        echo '<!-- Preferences count: ' . $preferences->count() . ' -->';
+        foreach($preferences as $pref) {
+            echo '<!-- Pref: ' . $pref->key . ' (merchant: ' . ($pref->merchant ?? 'not set') . ') -->';
+        }
+    }
+@endphp
+
 @section('mainContent')
     <div class="container-fluid">
         <div class="row gx-20">
@@ -87,39 +110,30 @@
                                     </div>
 
                                     <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <!--
-                                            **important note: using label**
-                                            here "delivery_area" that serves as "parcel_type" in code and gets added in database as "location"  
-                                            -->
-                                            <label class="form-label" for="delivery_area">{{ __('delivery_area') }}
-                                                <span class="text-danger">*</span></label>
-                                            <select
-                                                class="without_search form-select form-control parcel_type @error('parcel_type') is-invalid @enderror"
-                                                id="delivery_area" name="parcel_type">
-                                                <option value="" selected disabled>{{ __('select_type') }}
-                                                </option>
-                                                @if (settingHelper('preferences')->where('title', 'same_day')->first()->staff)
-                                                    <option value="same_day" {{ old('parcel_type') == 'same_day' ? 'selected' : (@$parcel->parcel_type == 'same_day' ? 'selected' : '') }}>
-                                                        {{ __('same_day') }}
-                                                    </option>
-                                                @endif
-
-                                                @if (settingHelper('preferences')->where('title', 'sub_city')->first()->staff)
-                                                    <option value="sub_city" {{ old('parcel_type') == 'sub_city' ? 'selected' : (@$parcel->parcel_type == 'sub_city' ? 'selected' : '') }}>
-                                                        {{ __('sub_city') }}
-                                                    </option>
-                                                @endif
-                                                @if (settingHelper('preferences')->where('title', 'sub_urban_area')->first()->staff)
-                                                    <option value="outside_city" {{ old('parcel_type') == 'outside_city' ? 'selected' : (@$parcel->parcel_type == 'sub_urban_area' ? 'selected' : '') }}> {{ __('sub_urban_area') }}</option>
-                                                @endif
-                                            </select>
-                                            @error('parcel_type')
-                                                <div class="invalid-feedback">
-                                                    {{ $message }}
-                                                </div>
-                                            @enderror
-                                        </div>
+                                        <div class="col-6 mb-3">
+    <label class="form-label" for="parcel_type">{{ __('delivery_area') }} <span class="text-danger">*</span></label>
+    <select class="form-select form-control @error('parcel_type') is-invalid @enderror" 
+            name="parcel_type" id="parcel_type" required>
+        <option value="" selected disabled>{{ __('select_type') }}</option>
+        
+        {{-- Hardcoded options that should always work --}}
+        <option value="same_day" {{ old('parcel_type', @$parcel->parcel_type) == 'same_day' ? 'selected' : '' }}>
+            {{ __('Same Day') }}
+        </option>
+        <option value="sub_city" {{ old('parcel_type', @$parcel->parcel_type) == 'sub_city' ? 'selected' : '' }}>
+            {{ __('Sub City') }}
+        </option>
+        <option value="outside_city" {{ old('parcel_type', @$parcel->parcel_type) == 'outside_city' ? 'selected' : '' }}>
+            {{ __('Outside City') }}
+        </option>
+        <option value="sub_urban_area" {{ old('parcel_type', @$parcel->parcel_type) == 'sub_urban_area' ? 'selected' : '' }}>
+            {{ __('Sub Urban Area') }}
+        </option>
+    </select>
+    @error('parcel_type')
+        <div class="invalid-feedback">{{ $message }}</div>
+    @enderror
+</div>
                                     </div>
                                     <div class="col-md-4">
                                         <div class="mb-3">
@@ -154,26 +168,34 @@
                                         </div>
                                     </div>
                                     <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label class="form-label" for="fv-full-name">{{ __('weight') }}
-                                                <span class="text-danger">*</span></label>
-                                            <select
-                                                class="without_search form-select form-control weight @error('weight') is-invalid @enderror"
-                                                name="weight">
-                                                <option value="" selected disabled>{{ __('select_weight') }}
-                                                </option>
-                                                @foreach ($charges as $charge)
-                                                    <option value="{{ $charge->weight }}" {{ $charge->weight == old('weight') ? 'selected' : '' }}>
-                                                        {{ $charge->weight }} {{ __(setting('default_weight')) }}
-                                                    </option>
-                                                @endforeach
-                                            </select>
-                                            @if ($errors->has('weight'))
-                                                <div class="invalid-feedback">
-                                                    <p>{{ $errors->first('weight') }}</p>
-                                                </div>
-                                            @endif
-                                        </div>
+                                        <div class="col-6 mb-3">
+    <label class="form-label" for="weight">{{ __('weight') }} <span class="text-danger">*</span></label>
+    <select class="form-select form-control weight @error('weight') is-invalid @enderror" 
+            name="weight" id="weight" required>
+        <option value="">{{ __('select_weight') }}</option>
+        @if(isset($charges) && $charges->count() > 0)
+            @foreach ($charges as $charge)
+                <option value="{{ $charge->weight }}" 
+                    data-charge="{{ $charge->charge ?? 0 }}"
+                    {{ old('weight') == $charge->weight ? 'selected' : '' }}
+                    {{ isset($parcel) && $parcel->weight == $charge->weight ? 'selected' : '' }}>
+                    {{ $charge->weight }} {{ setting('default_weight') ?? 'kg' }}
+                </option>
+            @endforeach
+        @else
+            <option value="" disabled>{{ __('No weight charges found') }}</option>
+            {{-- Fallback options --}}
+            <option value="1">1 kg</option>
+            <option value="2">2 kg</option>
+            <option value="3">3 kg</option>
+            <option value="4">4 kg</option>
+            <option value="5">5 kg</option>
+        @endif
+    </select>
+    @error('weight')
+        <div class="invalid-feedback">{{ $message }}</div>
+    @enderror
+</div>
                                     </div>
                                     <div class="col-md-4">
                                         <div class="mb-3">
@@ -480,3 +502,38 @@
     @include('admin.parcel.charge-script')
 @endsection
 @include('live_search.merchants')
+
+@push('scripts')
+<script>
+// JavaScript debug - This will definitely show in console
+console.log('========== DEBUG INFO ==========');
+console.log('Page loaded at: ' + new Date().toISOString());
+
+// Check if elements exist
+console.log('Weight dropdown exists: ' + ($('#weight').length > 0 ? 'YES' : 'NO'));
+console.log('Delivery area dropdown exists: ' + ($('#parcel_type').length > 0 ? 'YES' : 'NO'));
+
+// Log all dropdown options
+if ($('#weight').length > 0) {
+    console.log('Weight options:');
+    $('#weight option').each(function(index) {
+        console.log('  Option ' + index + ': value=' + $(this).val() + ', text=' + $(this).text() + ', selected=' + $(this).is(':selected'));
+    });
+}
+
+if ($('#parcel_type').length > 0) {
+    console.log('Delivery area options:');
+    $('#parcel_type option').each(function(index) {
+        console.log('  Option ' + index + ': value=' + $(this).val() + ', text=' + $(this).text() + ', selected=' + $(this).is(':selected'));
+    });
+}
+
+// Check if select2 is interfering
+if ($.fn.select2) {
+    console.log('Select2 is available');
+    console.log('Is weight dropdown using select2? ' + ($('#weight').hasClass('select2-hidden-accessible') ? 'YES' : 'NO'));
+}
+
+console.log('===============================');
+</script>
+@endpush

@@ -24,8 +24,9 @@ class ThirdPartyRequest extends FormRequest
     public function rules()
     {
         return [
-            'name' => 'required',
-            'address' => 'required',
+            'name' => 'required|string|max:255',
+            'address' => 'required|string',
+            'phone_number' => 'required|string|max:20',
         ];
     }
 }

@@ -36,28 +36,53 @@ class BranchRepository implements BranchInterface
         return Branch::find($id);
     }
 
-    public function store($request)
-    {
-        DB::beginTransaction();
-        try {
-            $branch = new Branch();
-            $branch->user_id = $request->manager;
-            $branch->name = $request->name;
-            $branch->address = $request->address;
-            $branch->phone_number = $request->phone_number;
-            $branch->save();
-
+// In app/Repositories/BranchRepository.php
+public function store($request)
+{
+    dump('BranchRepository store method started');
+    
+    DB::beginTransaction();
+    try {
+        dump('Creating new branch object');
+        $branch = new Branch();
+        $branch->user_id = $request->manager;
+        $branch->name = $request->name;
+        $branch->address = $request->address;
+        $branch->phone_number = $request->phone_number;
+        
+        dump('Branch data:', [
+            'user_id' => $branch->user_id,
+            'name' => $branch->name,
+            'address' => $branch->address,
+            'phone_number' => $branch->phone_number
+        ]);
+        
+        $branch->save();
+        dump('Branch saved with ID: ' . $branch->id);
+        
+        // Check if user relationship works
+        dump('Checking user relationship');
+        if ($branch->user) {
             $user = $branch->user;
+            dump('User found:', $user->id, $user->email);
+            
             $user->branch_id = $branch->id;
             $user->save();
-
-            DB::commit();
-            return true;
-        } catch (\Exception $e) {
-            DB::rollback();
-            return false;
+            dump('User updated with branch_id: ' . $user->branch_id);
+        } else {
+            dump('No user found with user_id: ' . $branch->user_id);
         }
+        
+        DB::commit();
+        dump('Transaction committed successfully');
+        return true;
+        
+    } catch (\Exception $e) {
+        DB::rollback();
+        dump('Exception in repository:', $e->getMessage());
+        return false;
     }
+}
 
     public function update($request)
     {

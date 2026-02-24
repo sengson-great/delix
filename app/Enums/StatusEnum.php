@@ -6,5 +6,5 @@ enum StatusEnum: string
 {
     case ACTIVE     = 'active';
     case INACTIVE   = 'inactive';
-
+    case COMPLETED  = 'completed';
 }

@@ -31,6 +31,98 @@ class WithdrawRepository implements WithdrawInterface
         return MerchantWithdraw::all();
     }
 
+    public function store($request)
+{
+    \Log::info('WithdrawRepository::store started', $request->all());
+    
+    DB::beginTransaction();
+    try {
+        $withdraw = new MerchantWithdraw();
+        
+        // Generate a unique withdraw ID
+        $withdraw->withdraw_id = 'PDL' . rand(100000, 99999999);
+        $withdraw->merchant_id = $request->merchant;
+        $withdraw->amount = $request->amount;
+        
+        // Handle payment method (withdraw_to is the payment method ID)
+        $paymentMethod = PaymentMethod::find($request->withdraw_to);
+        if ($paymentMethod) {
+            $withdraw->payment_method = $paymentMethod->name;
+            // REMOVED: payment_method_type (doesn't exist in table)
+        }
+        
+        // Get merchant payment account details
+        $merchantPaymentAccount = MerchantPaymentAccount::with('paymentAccount')
+            ->where('merchant_id', $request->merchant)
+            ->where('payment_method_id', $request->withdraw_to)
+            ->first();
+            
+        if ($merchantPaymentAccount) {
+            // Set account details based on payment method
+            switch ($paymentMethod->type ?? '') {
+                case 'bank':
+                    $withdraw->account_holder_name = $merchantPaymentAccount->account_holder_name;
+                    $withdraw->account_number = $merchantPaymentAccount->account_number;
+                    $withdraw->bank_name = $merchantPaymentAccount->bank_name;
+                    $withdraw->branch_name = $merchantPaymentAccount->branch_name;
+                    $withdraw->routing_number = $merchantPaymentAccount->routing_no;
+                    break;
+                    
+                case 'mobile_banking':
+                    $withdraw->mobile_banking_number = $merchantPaymentAccount->mobile_banking_number;
+                    $withdraw->account_holder_name = $merchantPaymentAccount->account_holder_name;
+                    break;
+            }
+        }
+        
+        // Other fields - using CORRECT column names
+        $withdraw->created_by = Sentinel::getUser()->id;
+        $withdraw->notes = $request->details ?? $request->note ?? null; // FIXED: notes (plural)
+        $withdraw->date = $request->date ?? now()->toDateString();
+        $withdraw->status = $request->status ?? 'pending';
+        $withdraw->requested_at = now();
+        
+        // Calculate charge and total amount
+        $withdraw->charge = 0; // Calculate based on your business logic
+        $withdraw->total_amount = $withdraw->amount + $withdraw->charge;
+        
+        // If processed immediately
+        if ($request->status == 'processed') {
+            $withdraw->processed_at = now();
+            $withdraw->processed_by = Sentinel::getUser()->id;
+            $withdraw->account_id = $request->account;
+            $withdraw->transaction_id = $request->transaction_id;
+            $withdraw->status = 'processed';
+        }
+        
+        $withdraw->save();
+        
+        // Handle parcels and merchant accounts if any
+        if ($request->has('parcels')) {
+            foreach ($request->parcels as $parcelId) {
+                Parcel::where('id', $parcelId)->update(['withdraw_id' => $withdraw->id]);
+            }
+        }
+        
+        if ($request->has('merchant_accounts')) {
+            foreach ($request->merchant_accounts as $accountId) {
+                MerchantAccount::where('id', $accountId)->update(['withdraw_id' => $withdraw->id]);
+            }
+        }
+        
+        DB::commit();
+        \Log::info('WithdrawRepository::store successful', ['id' => $withdraw->id]);
+        
+        return true;
+        
+    } catch (\Exception $e) {
+        DB::rollback();
+        \Log::error('WithdrawRepository::store error: ' . $e->getMessage());
+        \Log::error('File: ' . $e->getFile() . ':' . $e->getLine());
+        return false;
+    }
+}
+
     public function chargeStatus($id, $status, $request = '')
     {
         DB::beginTransaction();

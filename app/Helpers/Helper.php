@@ -862,6 +862,26 @@
         }
     }
 
+    if (!function_exists('canCreateParcel')) {
+        function canCreateParcel()
+        {
+            $preference = settingHelper('preferences')?->where('title', 'create_parcel')->first();
+            
+            if (!$preference) {
+                return false; // or return true if you want to allow by default
+            }
+            
+            $value = $preference->value;
+            $decodedValue = json_decode($value, true);
+            
+            if (is_array($decodedValue) && isset($decodedValue['staff'])) {
+                return $decodedValue['staff'] == 1;
+            }
+            
+            return $value == '1' || $value == 1 || $value == 'true';
+        }
+    }
+
     if (!function_exists('validate_purchase')) {
         function validate_purchase($code, $data)
         {

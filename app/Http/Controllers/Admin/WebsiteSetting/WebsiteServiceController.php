@@ -78,9 +78,7 @@ class WebsiteServiceController extends Controller
 
             return view('admin.website.service.edit', $data);
         }catch (\Exception $e) {
-            Toastr::error('Something went wrong, please try again');
-
-            return back();
+            dd($e->getMessage(), $e->getFile(), $e->getLine());
         }
     }
 

@@ -8,5 +8,5 @@ enum PaymentMethodType: string
     case MFS    = 'mfs';
     case CASH   = 'cash';
 
-
+    case MOBILE_BANKING = 'mobile_banking';
 }

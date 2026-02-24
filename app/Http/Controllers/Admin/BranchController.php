@@ -32,20 +32,30 @@ class BranchController extends Controller
         return view('admin.branch.create', compact('users'));
     }
 
-    public function store(BranchRequest $request)
-    {
-        if (isDemoMode()) {
-            Toastr::error(__('this_function_is_disabled_in_demo_server'));
-            return back();
+public function store(BranchRequest $request)
+{
+    try {
+        // Debug 1: Check if we get here
+        dump('Step 1: Controller store method started');
+        
+        $result = $this->branch->store($request);
+        
+        // Debug 2: See what the repository returns
+        dump('Step 2: Repository returned:', $result);
+        
+        if ($result) {
+            dump('Step 3: Success condition met');
+            return redirect()->route('admin.branch')->with('success', __('created_successfully'));
+        } else {
+            dump('Step 3: Success condition failed - repository returned false');
         }
-        try {
-            if ($this->branch->store($request)):
-                return redirect()->route('admin.branch')->with('success', __('created_successfully'));
-            endif;
-        } catch (\Exception $e) {
-            return back()->with('danger', __('something_went_wrong_please_try_again'));
-        }
+        
+        dd('End of method');
+        
+    } catch (\Exception $e) {
+        dd('Exception caught:', $e->getMessage(), $e->getFile(), $e->getLine());
     }
+}
 
     public function edit($id)
     {

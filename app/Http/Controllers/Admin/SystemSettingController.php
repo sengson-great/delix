@@ -33,12 +33,13 @@ class SystemSettingController extends Controller
             $data = [
                 'languages'  => Language::active()->pluck('name','locale'),
                 'time_zones' => Timezone::select('timezone','id','gmt_offset')->get(),
-                'countries'  => Country::active()->pluck('name','id'),
+                'countries'  => Country::where('is_active', 1)->pluck('name','id'),
                 'lang'       => $request->site_lang ? $request->site_lang : App::getLocale(),
             ];
             return view('admin.system_setting.general_setting', $data);
         } catch (\Exception $e) {
-            return back()->with('danger', __('something_went_wrong.please_try_again.'));
+            dd($e->getMessage(), $e->getFile(), $e->getLine());
+            //return back()->with('danger', __('something_went_wrong.please_try_again.'));
         }
     }
 
@@ -228,9 +229,7 @@ class SystemSettingController extends Controller
 
                     return redirect('/' . $command);
                 } else {
-                    Toastr::error(__('Something went wrong, please try again'));
-
-                    return back();
+                    dd($request->all())->getMessage();
                 }
             }
             if (isDemoMode()) {

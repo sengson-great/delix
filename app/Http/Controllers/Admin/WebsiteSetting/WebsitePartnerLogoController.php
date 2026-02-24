@@ -76,9 +76,7 @@ class WebsitePartnerLogoController extends Controller
 
             return view('admin.website.partner_logo.edit', compact('partner_logo'));
         }catch (\Exception $e) {
-            Toastr::error('Something went wrong, please try again');
-
-            return back();
+            dd($e->getMessage(), $e->getFile(), $e->getLine());
         }
     }
 

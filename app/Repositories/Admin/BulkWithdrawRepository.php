@@ -34,26 +34,70 @@ class BulkWithdrawRepository implements BulkWithdrawInterface {
         return WithdrawBatch::with('withdraws.payments.paymentAccount')->find($id);
     }
 
-    public function store($request)
-    {
-        DB::beginTransaction();
-        try {
-            $withdraw_batch                      = new WithdrawBatch();
-            $withdraw_batch->title               = $request->title;
-            $withdraw_batch->batch_no            = 'PDL'.rand(100000,999999);
-            $withdraw_batch->batch_type          = $request->batch_type;
-            $withdraw_batch->note                = $request->note;
-            $withdraw_batch->user_id             = \Sentinel::getUser()->id;
-            $withdraw_batch->save();
-
-            DB::commit();
-            return true;
-
-        } catch (\Exception $e) {
+public function store($request)
+{
+    \Log::info('========== REPOSITORY STORE STARTED ==========');
+    \Log::info('Request data:', $request->all());
+    
+    DB::beginTransaction();
+    try {
+        $user = \Sentinel::getUser();
+        
+        if (!$user) {
+            \Log::error('No authenticated user found');
             DB::rollback();
             return false;
         }
+        
+        // Create new batch with correct column names
+        $withdraw_batch = new WithdrawBatch();
+        $withdraw_batch->title = $request->title;
+        $withdraw_batch->batch_number = 'PDL' . rand(100000, 999999);
+        $withdraw_batch->type = $request->batch_type;
+        $withdraw_batch->notes = $request->note;
+        $withdraw_batch->user_id = $user->id;
+        $withdraw_batch->created_by = $user->id;
+        $withdraw_batch->updated_by = $user->id;
+        $withdraw_batch->status = 'draft';
+        
+        // Set default values for numeric fields
+        $withdraw_batch->total_requests = 0;
+        $withdraw_batch->total_processed = 0;
+        $withdraw_batch->total_pending = 0;
+        $withdraw_batch->total_rejected = 0;
+        $withdraw_batch->total_amount = 0;
+        $withdraw_batch->total_charge = 0;
+        $withdraw_batch->total_payable = 0;
+        $withdraw_batch->total_processed_amount = 0;
+        $withdraw_batch->total_pending_amount = 0;
+        $withdraw_batch->total_rejected_amount = 0;
+        
+        \Log::info('Model data before save:', $withdraw_batch->toArray());
+        
+        $saved = $withdraw_batch->save();
+        
+        if (!$saved) {
+            \Log::error('Failed to save withdraw batch');
+            DB::rollback();
+            return false;
+        }
+        
+        \Log::info('WithdrawBatch saved successfully with ID: ' . $withdraw_batch->id);
+        
+        DB::commit();
+        \Log::info('========== REPOSITORY STORE COMPLETED ==========');
+        
+        return true;
+        
+    } catch (\Exception $e) {
+        DB::rollback();
+        \Log::error('========== REPOSITORY STORE EXCEPTION ==========');
+        \Log::error('Exception message: ' . $e->getMessage());
+        \Log::error('Exception file: ' . $e->getFile() . ':' . $e->getLine());
+        
+        return false;
     }
+}
 
     public function update($request)
     {

@@ -17,72 +17,101 @@ class DeliveryManDataTable extends DataTable
     public function dataTable(QueryBuilder $query): EloquentDataTable
     {
         return (new EloquentDataTable($query))
-        ->addIndexColumn()
-                ->addColumn('options', function ($delivery_man) {
-            return view('admin.delivery-man.column.options', compact('delivery_man'));
-        })->addColumn('name_email', function ($delivery_man) {
-            return view('admin.delivery-man.column.name_email', compact('delivery_man'));
-        })->addColumn('branch', function ($delivery_man) {
-            return view('admin.delivery-man.column.branch', compact('delivery_man'));
-        })->addColumn('address', function ($delivery_man) {
-            return view('admin.delivery-man.column.address', compact('delivery_man'));
-        })->addColumn('last_login', function ($delivery_man) {
-            return view('admin.delivery-man.column.last_login', compact('delivery_man'));
-        })->addColumn('fee', function ($delivery_man) {
-            return view('admin.delivery-man.column.fee', compact('delivery_man'));
-        })->addColumn('status', function ($delivery_man) {
-            return view('admin.delivery-man.column.status', compact('delivery_man'));
-        })->addColumn('current_amount', function ($delivery_man) {
-            return view('admin.delivery-man.column.current_amount', compact('delivery_man'));
-        })->setRowId('id');
+            ->addIndexColumn()
+            ->addColumn('name_email', function ($delivery_man) {
+                return ($delivery_man->user->first_name ?? '') . ' ' . 
+                    ($delivery_man->user->last_name ?? '') . '<br>' . 
+                    ($delivery_man->user->email ?? '');
+            })
+            ->addColumn('branch', function ($delivery_man) {
+                return $delivery_man->user->branch->name ?? 'Pending';
+            })
+            ->addColumn('address', function ($delivery_man) {
+                return $delivery_man->user->address ?? 'N/A';
+            })
+            ->addColumn('last_login', function ($delivery_man) {
+                return $delivery_man->last_login ? Carbon::parse($delivery_man->last_login)->format('Y-m-d') : 'Never';
+            })
+            ->addColumn('fee', function ($delivery_man) {
+                return $delivery_man->fee ?? 0;
+            })
+            ->addColumn('status', function ($delivery_man) {
+                return $delivery_man->status == 'active' ? 'Active' : 'Inactive';
+            })
+            ->addColumn('current_amount', function ($delivery_man) {
+                return $delivery_man->current_amount ?? 0;
+            })
+            ->addColumn('options', function ($delivery_man) {
+                return '<a href="'.route('delivery.man.edit', $delivery_man->id).'" class="btn btn-sm btn-primary">Edit</a>';
+            })
+            ->rawColumns(['name_email', 'options', 'status'])
+            ->setRowId('id');
     }
     public function query(DeliveryMan $model): QueryBuilder
     {
-        $query = $model->when(!hasPermission('read_all_delivery_man'), function ($query){
-                $query->whereHas('user', function ($q){
-                    $q->where('branch_id', \Sentinel::getUser()->branch_id)
-                        ->orWhere('branch_id', null);
-                });
-            })
-            ->when($this->request->has('order'), function ($query) {
-                $orderBy = $this->request->order[0]['dir'] ?? 'desc';
-                $query->orderBy('created_at', $orderBy);
-            })
-            ->when($this->request->branch, function ($query) {
-                $query->whereHas('user', function ($q) {
-                    $q->when($this->request->branch == 'pending', function ($search){
-                        $search->where('branch_id', null);
-                    })->when($this->request->branch != 'pending', function ($search) {
-                        $search->where('branch_id', $this->request->branch);
-                    });
-                });
-            })
-            ->when($this->request->has('status') && $this->request->status !== "", function ($query) {
-                $status = $this->request->status;
-                $query->where('status', $status);
-            })
-            ->when($this->request->has('email') && $this->request->email !== "", function ($query) {
-                $query->whereHas('user', function ($q) {
-                    $q->where('email', 'like', '%' . $this->request->email . '%');
-                });
-            })
-            ->when($this->request->has('name') && $this->request->name !== "",  function ($query) {
-                $query->whereHas('user', function ($q) {
-                    $q->where('first_name', 'like', '%' . $this->request->name . '%')
-                        ->orWhere('last_name', 'like', '%' . $this->request->name . '%');
-                });
-            })
-            ->when(request('search')['value'] ?? false, function ($query, $search) {
-                $query->where(function ($query) use ($search) {
-                    $query->orWhereHas('user', function ($q) use ($search) {
-                              $q->where('first_name', 'like', "%$search%")
-                                    ->orWhere('email', 'like', "%$search%")
-                                    ->orWhere('phone_number', 'like', "%$search%");
-                          });
+        $query = $model->newQuery()->with(['user', 'user.branch']); // Eager load relationships
+        
+        // Permission check
+        if (!hasPermission('read_all_delivery_man')) {
+            $query->whereHas('user', function ($q) {
+                $q->where('branch_id', \Sentinel::getUser()->branch_id)
+                    ->orWhereNull('branch_id');
+            });
+        }
+        
+        // Order by
+        if ($this->request->has('order') && isset($this->request->order[0]['dir'])) {
+            $orderBy = $this->request->order[0]['dir'];
+            $query->orderBy('created_at', $orderBy);
+        } else {
+            $query->latest();
+        }
+        
+        // Branch filter
+        if ($this->request->filled('branch')) {
+            $query->whereHas('user', function ($q) {
+                if ($this->request->branch == 'pending') {
+                    $q->whereNull('branch_id');
+                } else {
+                    $q->where('branch_id', $this->request->branch);
+                }
+            });
+        }
+        
+        // Status filter
+        if ($this->request->filled('status')) {
+            $query->where('status', $this->request->status);
+        }
+        
+        // Email filter
+        if ($this->request->filled('email')) {
+            $query->whereHas('user', function ($q) {
+                $q->where('email', 'like', '%' . $this->request->email . '%');
+            });
+        }
+        
+        // Name filter
+        if ($this->request->filled('name')) {
+            $query->whereHas('user', function ($q) {
+                $q->where('first_name', 'like', '%' . $this->request->name . '%')
+                    ->orWhere('last_name', 'like', '%' . $this->request->name . '%');
+            });
+        }
+        
+        // Global search
+        if ($this->request->filled('search.value')) {
+            $search = $this->request->input('search.value');
+            $query->where(function ($query) use ($search) {
+                $query->orWhereHas('user', function ($q) use ($search) {
+                    $q->where('first_name', 'like', "%$search%")
+                        ->orWhere('last_name', 'like', "%$search%")
+                        ->orWhere('email', 'like', "%$search%")
+                        ->orWhere('phone_number', 'like', "%$search%");
                 });
             });
-
-        return $query->latest();
+        }
+        
+        return $query;
     }
 
 

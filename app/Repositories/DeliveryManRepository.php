@@ -70,77 +70,85 @@ class DeliveryManRepository implements DeliveryManInterface
 
     }
 
-    public function store($request)
-    {
-        DB::beginTransaction();
-        try {
-            if (isset($request['image_id'])) {
-                $response = $this->saveImage($request['image_id'], 'image');
-                $images = $response['images'];
-            }
-
-            if (isset($request['driving_license'])) {
-                $response = $this->saveImage($request['driving_license'], 'image');
-                $driving_license = $response['images'];
-            }
-
-            $user = new User();
-            $user->first_name = $request['first_name'];
-            $user->last_name = $request['last_name'];
-            $user->email = $request['email'];
-            $user->phone_number = $request['phone_number'];
-            $user->branch_id = $request['branch'] ? $request['branch'] : 1;
-            $user->password = bcrypt($request['password']);
-            $user->permissions = \Config::get('parcel.delivery_man_permissions');
-            $user->image_id = $images ?? null;
-            $user->user_type = 'delivery';
-            $user->save();
-
-            $deliveryman = new DeliveryMan();
-            $deliveryman->user_id = $user->id;
-            $deliveryman->phone_number = $request['phone_number'];
-            $deliveryman->city = $request['city'];
-            $deliveryman->zip = $request['zip'];
-            $deliveryman->address = $request['address'];
-            $deliveryman->delivery_fee = $request['delivery_fee'];
-            $deliveryman->pick_up_fee = $request['pick_up_fee'];
-            $deliveryman->return_fee = $request['return_fee'];
-            $deliveryman->driving_license = $driving_license ?? null;
-            $deliveryman->save();
-
-            $activation = Activation::create($user);
-            Activation::complete($user, $activation->code);
-
-
-            $company_account = new CompanyAccount();
-            $company_account->details = 'delivery_man_opening_balance';
-            $company_account->source = 'opening_balance';
-            $company_account->date = date('Y-m-d');
-            $company_account->type = 'income';
-            $company_account->amount = $request['opening_balance'];
-            $company_account->created_by = Sentinel::getUser()->id;
-            $company_account->delivery_man_id = $deliveryman->id;
-            $company_account->save();
-
-            $deliveryman_account = new DeliveryManAccount();
-            $deliveryman_account->details = 'delivery_man_opening_balance';
-            $deliveryman_account->source = 'opening_balance';
-            $deliveryman_account->date = date('Y-m-d');
-            $deliveryman_account->type = 'income';
-            $deliveryman_account->amount = $request['opening_balance'];
-            $deliveryman_account->delivery_man_id = $deliveryman->id;
-            $deliveryman_account->company_account_id = $company_account->id;
-            $deliveryman_account->save();
-            // new account
-
-            DB::commit();
-            return true;
-
-        } catch (\Exception $e) {
-            DB::rollback();
-            return false;
+public function store($request)
+{
+    DB::beginTransaction();
+    try {
+        if (isset($request['image_id'])) {
+            $response = $this->saveImage($request['image_id'], 'image');
+            $images = $response['images'];
         }
+
+        if (isset($request['driving_license'])) {
+            $response = $this->saveImage($request['driving_license'], 'image');
+            $driving_license = $response['images'];
+        }
+
+        $user = new User();
+        $user->first_name = $request['first_name'];
+        $user->last_name = $request['last_name'];
+        $user->email = $request['email'];
+        $user->phone_number = $request['phone_number'];
+        $user->branch_id = $request['branch'] ? $request['branch'] : 1;
+        $user->password = bcrypt($request['password']);
+        $user->permissions = \Config::get('parcel.delivery_man_permissions');
+        $user->image_id = $images ?? null;
+        $user->user_type = 'delivery';
+        $user->save();
+
+        $deliveryman = new DeliveryMan();
+        $deliveryman->user_id = $user->id;
+        $deliveryman->phone_number = $request['phone_number'];
+        $deliveryman->city = $request['city'];
+        $deliveryman->zip = $request['zip'];
+        $deliveryman->address = $request['address'];
+        $deliveryman->delivery_fee = $request['delivery_fee'];
+        $deliveryman->pick_up_fee = $request['pick_up_fee'];
+        $deliveryman->return_fee = $request['return_fee'];
+        $deliveryman->driving_license = $driving_license ?? null;
+        $deliveryman->save();
+
+        $activation = Activation::create($user);
+        Activation::complete($user, $activation->code);
+
+        $company_account = new CompanyAccount();
+        $company_account->details = 'delivery_man_opening_balance';
+        $company_account->source = 'opening_balance';
+        $company_account->date = date('Y-m-d');
+        $company_account->type = 'income';
+        $company_account->amount = $request['opening_balance'];
+        $company_account->created_by = Sentinel::getUser()->id;
+        $company_account->delivery_man_id = $deliveryman->id;
+        $company_account->save();
+
+        $deliveryman_account = new DeliveryManAccount();
+        $deliveryman_account->details = 'delivery_man_opening_balance';
+        $deliveryman_account->source = 'opening_balance';
+        $deliveryman_account->date = date('Y-m-d');
+        $deliveryman_account->type = 'income';
+        $deliveryman_account->amount = $request['opening_balance'];
+        $deliveryman_account->delivery_man_id = $deliveryman->id;
+        $deliveryman_account->company_account_id = $company_account->id;
+        $deliveryman_account->save();
+
+        DB::commit();
+        return true;
+
+    } catch (\Exception $e) {
+        DB::rollback();
+        
+        // Log the actual error
+        \Log::error('Delivery Man Store Failed', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+            'request' => $request
+        ]);
+        
+        return false;
     }
+}
 
     public function update($request)
     {

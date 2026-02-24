@@ -78,9 +78,7 @@ class WebsiteStatisticController extends Controller
 
             return view('admin.website.statistic.edit', $data);
         }catch (\Exception $e) {
-            Toastr::error('Something went wrong, please try again');
-
-            return back();
+            dd($e->getMessage(), $e->getFile(), $e->getLine());
         }
     }
 

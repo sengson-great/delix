@@ -157,62 +157,69 @@ class MerchantRepository implements MerchantInterface
         }
     }
 
-    public function saveMerchant($request, $userId)
-    {
-        try {
+public function saveMerchant($request, $userId)
+{
+    try {
 
-            // -------- NID --------
-            $nid = $request->nid;
-            if (isset($nid)) {
-                $response = $this->saveImage($nid, 'image');
-                $nid = $response['images'];
-            }
+        // -------- NID --------
+        $nid = $request->nid;
+        if (isset($nid)) {
+            $response = $this->saveImage($nid, 'image');
+            $nid = $response['images'];
+        }
 
-            // -------- Trade License --------
-            $trade_license = $request->trade_license;
-            if (isset($trade_license)) {
-                $response = $this->saveImage($trade_license, 'image');
-                $trade_license = $response['images'];
-            }
+        // -------- Trade License --------
+        $trade_license = $request->trade_license;
+        if (isset($trade_license)) {
+            $response = $this->saveImage($trade_license, 'image');
+            $trade_license = $response['images'];
+        }
 
-            // -------- COD Charges --------
-            $cod_charges = [];
+        // -------- COD Charges --------
+        $cod_charges = [];
+        if ($request->has('locations') && is_array($request->locations) && !empty($request->locations)) {
             foreach ($request->locations as $key => $location) {
-                $cod_charges[$location] = $request->charge[$key];
+                if (isset($request->charge[$key])) {
+                    $cod_charges[$location] = $request->charge[$key];
+                }
             }
+        }
 
-            // -------- Charges --------
-            $charges = [];
+        // -------- Charges --------
+        $charges = [];
+        if ($request->has('weights') && is_array($request->weights) && !empty($request->weights)) {
             foreach ($request->weights as $key => $weight) {
                 $charges[$weight] = [
-                    'same_day' => $request->same_day[$key],
-                    'sub_city' => $request->sub_city[$key],
-                    'sub_urban_area' => $request->sub_urban_area[$key],
+                    'same_day' => $request->same_day[$key] ?? 0,
+                    'sub_city' => $request->sub_city[$key] ?? 0,
+                    'sub_urban_area' => $request->sub_urban_area[$key] ?? 0,
                 ];
             }
+        }
 
-            // -------- Merchant --------
-            $merchant = new Merchant();
-            $merchant->user_id = $userId;
-            $merchant->company = $request['company'];
-            $merchant->vat = $request['vat'] == '' ? 0.00 : $request['vat'];
-            $merchant->phone_number = $request['phone_number'];
-            $merchant->city = $request['city'];
-            $merchant->zip = $request['zip'];
-            $merchant->address = $request['address'];
-            $merchant->website = $request['website'];
-            $merchant->billing_street = $request['billing_street'];
-            $merchant->billing_city = $request['billing_city'];
-            $merchant->billing_zip = $request['billing_zip'];
-            $merchant->nid = $nid ?? null;
-            $merchant->trade_license = $trade_license ?? null;
-            $merchant->api_key = $this->generate_random_string(15);
-            $merchant->secret_key = $this->generate_random_string(30);
-            $merchant->cod_charges = $cod_charges;
-            $merchant->charges = $charges;
-            $merchant->save();
+        // -------- Merchant --------
+        $merchant = new Merchant();
+        $merchant->user_id = $userId;
+        $merchant->company = $request['company'];
+        $merchant->vat = $request['vat'] == '' ? 0.00 : $request['vat'];
+        $merchant->phone_number = $request['phone_number'];
+        $merchant->city = $request['city'];
+        $merchant->zip = $request['zip'];
+        $merchant->address = $request['address'];
+        $merchant->website = $request['website'];
+        $merchant->billing_street = $request['billing_street'];
+        $merchant->billing_city = $request['billing_city'];
+        $merchant->billing_zip = $request['billing_zip'];
+        $merchant->nid = $nid ?? null;
+        $merchant->trade_license = $trade_license ?? null;
+        $merchant->api_key = $this->generate_random_string(15);
+        $merchant->secret_key = $this->generate_random_string(30);
+        $merchant->cod_charges = $cod_charges;
+        $merchant->charges = $charges;
+        $merchant->save();
 
-            // -------- Merchant Account --------
+        // -------- Merchant Account --------
+        if ($request->has('opening_balance') && $request->opening_balance > 0) {
             $merchant_account = new MerchantAccount();
             $merchant_account->details = 'opening_balance';
             $merchant_account->source = 'opening_balance';
@@ -221,24 +228,26 @@ class MerchantRepository implements MerchantInterface
             $merchant_account->amount = $request['opening_balance'];
             $merchant_account->merchant_id = $merchant->id;
             $merchant_account->save();
-
-            // -------- Other Related Data --------
-            $this->saveMerchantPaymentAccount($merchant->id);
-            $this->saveMerchantShop($merchant->id, $request);
-        } catch (\Throwable $e) {
-
-            Log::error('Save Merchant Failed', [
-                'user_id' => $userId,
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
-                'payload' => $request->all(),
-            ]);
-
-            throw $e; // VERY IMPORTANT
         }
+
+        // -------- Other Related Data --------
+        $this->saveMerchantPaymentAccount($merchant->id);
+        $this->saveMerchantShop($merchant->id, $request);
+        
+    } catch (\Throwable $e) {
+
+        Log::error('Save Merchant Failed', [
+            'user_id' => $userId,
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+            'payload' => $request->all(),
+        ]);
+
+        throw $e; // VERY IMPORTANT
     }
+}
 
 
 
@@ -765,10 +774,16 @@ class MerchantRepository implements MerchantInterface
     public function saveMerchantShop($merchant_id, $request)
     {
         try {
-            $default_branch = Branch::where('default', 1)->first();
-
+            $default_branch = Branch::first();
             if (!$default_branch) {
-                throw new \Exception('Default branch not found.');
+                // Create a default branch if none exists
+                $default_branch = Branch::create([
+                    'name' => 'Main Branch',
+                    'address' => 'Default Address',
+                    'phone' => 'N/A',
+                    'email' => 'branch@example.com',
+                    'status' => 1
+                ]);
             }
 
             $merchant_shop = new Shop();

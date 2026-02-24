@@ -59,6 +59,52 @@ use App\Http\Controllers\Merchant\WithdrawController as MerchantWithdrawControll
 use App\Http\Controllers\Merchant\DashboardController as MerchantDashboardController;
 use App\Http\Controllers\Merchant\MerchantStaffController as MerchantStaffController;
 
+use App\Models\DeliveryMan;
+use Illuminate\Support\Facades\Log;
+
+
+
+Route::get('/debug-delivery-data', function() {
+    try {
+        $data = DeliveryMan::all();
+        
+        // Try to render each view to catch errors
+        foreach ($data as $delivery_man) {
+            try {
+                view('admin.delivery-man.column.name_email', compact('delivery_man'))->render();
+                view('admin.delivery-man.column.branch', compact('delivery_man'))->render();
+                view('admin.delivery-man.column.address', compact('delivery_man'))->render();
+                view('admin.delivery-man.column.last_login', compact('delivery_man'))->render();
+                view('admin.delivery-man.column.fee', compact('delivery_man'))->render();
+                view('admin.delivery-man.column.status', compact('delivery_man'))->render();
+                view('admin.delivery-man.column.current_amount', compact('delivery_man'))->render();
+                view('admin.delivery-man.column.options', compact('delivery_man'))->render();
+            } catch (\Exception $e) {
+                return response()->json([
+                    'error' => true,
+                    'message' => $e->getMessage(),
+                    'delivery_man_id' => $delivery_man->id,
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
+        }
+        
+        return response()->json([
+            'success' => true,
+            'count' => $data->count(),
+            'data' => $data
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => true,
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ], 500);
+    }
+});
+
+
 Route::get('cron-run', [CronController::class, 'cron'])->name('cron.run.manually');
 
 Route::get('/get-shops-by-merchant', [ImportExportController::class, 'getShopsByMerchant'])->name('get.shops.by.merchant');

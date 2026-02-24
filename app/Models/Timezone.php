@@ -9,5 +9,5 @@ class Timezone extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['country_code', 'timzezone', 'gmt_offset', 'dst_offset', 'raw_offset'];
+    protected $fillable = ['country_code', 'timezone', 'gmt_offset', 'dst_offset', 'raw_offset'];
 }

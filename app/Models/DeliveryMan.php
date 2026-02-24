@@ -17,7 +17,7 @@ class DeliveryMan extends Model
 
     protected $casts = [
         'driving_license' => 'array',
-        'status' => StatusEnum::class,
+        //'status' => StatusEnum::class,
     ];
 
     public function scopeActive($query)

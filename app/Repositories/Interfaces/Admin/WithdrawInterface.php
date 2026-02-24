@@ -13,4 +13,6 @@ interface WithdrawInterface{
     public function removeOldFile($image);
 
     public function updateBatch($id, $request);
+
+    public function store($request);
 }

@@ -16,23 +16,23 @@
         <div class="row gx-20">
             <div class="col-lg-12">
                 <div class="header-top d-flex justify-content-between align-items-center">
-                    <div>
-                        <h3 class="section-title">{{__('delivery_man')}} {{__('lists')}}</h3>
-                        <p>{{__('you_have_total')}} {{ !blank($delivery_men)? $delivery_men->total():'0' }} {{__('delivery_man')}}.</p>
-                    </div>
-                    <div class="oftions-content-right mb-12">
-                        <a href="#" class="d-flex align-items-center btn sg-btn-primary gap-2" id="filterBTN">
-                            <i class="las la-filter"></i>
-                        </a>
-                        @if(hasPermission('deliveryman_create'))
-                            <a href="{{route('delivery.man.create')}}"
-                            class="d-flex align-items-center btn sg-btn-primary gap-2">
-                             <i class="las la-plus"></i>
-                             <span>{{__('add_delivery_man') }}</span>
-                         </a>
-                        @endif
-                    </div>
-                </div>
+    <div>
+        <h3 class="section-title">{{__('delivery_man')}} {{__('lists')}}</h3>
+        <p>{{__('you_have_total')}} {{ $totalDeliveryMen ?? 0 }} {{__('delivery_man')}}.</p>
+    </div>
+    <div class="oftions-content-right mb-12">
+        <a href="#" class="d-flex align-items-center btn sg-btn-primary gap-2" id="filterBTN">
+            <i class="las la-filter"></i>
+        </a>
+        @if(hasPermission('deliveryman_create'))
+            <a href="{{route('delivery.man.create')}}"
+               class="d-flex align-items-center btn sg-btn-primary gap-2">
+                <i class="las la-plus"></i>
+                <span>{{__('add_delivery_man') }}</span>
+            </a>
+        @endif
+    </div>
+</div>
                 <div class="row">
                     <div class="col-lg-12" id="filterSection">
                         <div class="hidden-filter bg-white redious-border p-20 p-sm-30 mb-4">

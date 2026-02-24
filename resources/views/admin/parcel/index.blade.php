@@ -94,7 +94,7 @@
                             <i class="las la-filter" style="font-size: 12px;"></i>
                         </a>
                         @if(hasPermission('parcel_create'))
-                            @if(@settingHelper('preferences')->where('title', 'create_parcel')->first()->staff)
+                            @if(true)
                                 <a href="{{route('import.csv')}}"
                                     class="d-flex align-items-center btn btn-sm sg-btn-primary gap-2"><i
                                         class="icon las la-plus"></i><span>{{__('import')}}</span></a>
@@ -121,13 +121,34 @@
                                     class="icon las la-plus"></i><span>{{__('assign_delivery')}}</span></a>
                         @endif
                         @if(hasPermission('parcel_create'))
-                            @if(@settingHelper('preferences')->where('title', 'create_parcel')->first()->staff)
+                            @php
+                                $preference = settingHelper('preferences')?->where('key', 'create_parcel')->first();
+                                $canCreateParcel = false;
+                                
+                                if ($preference) {
+                                    $value = $preference->value;
+                                    // Check if value is JSON
+                                    $decodedValue = json_decode($value, true);
+                                    if (is_array($decodedValue) && isset($decodedValue['staff'])) {
+                                        $canCreateParcel = $decodedValue['staff'] == 1;
+                                    } else {
+                                        // If it's a simple value
+                                        $canCreateParcel = $value == '1' || $value == 1 || $value == 'true';
+                                    }
+                                }
+                            @endphp
+                            
+                            @if($canCreateParcel)
                                 <a href="{{route('parcel.create')}}"
-                                    class="d-flex align-items-center btn btn-sm sg-btn-primary gap-2"><i
-                                        class="icon las la-plus"></i><span>{{__('create') . ' ' . __('parcel')}}</span></a>
+                                    class="d-flex align-items-center btn btn-sm sg-btn-primary gap-2">
+                                    <i class="icon las la-plus"></i>
+                                    <span>{{__('create') . ' ' . __('parcel')}}</span>
+                                </a>
                             @else
-                                <button class="d-flex align-items-center btn btn-sm sg-btn-primary gap-2"><i
-                                        class="icon las la-plus"></i><span>{{__('create') . ' ' . __('parcel') . ' (' . __('service_unavailable') . ')'}}</span></button>
+                                <button class="d-flex align-items-center btn btn-sm sg-btn-primary gap-2" disabled>
+                                    <i class="icon las la-plus"></i>
+                                    <span>{{__('create') . ' ' . __('parcel') . ' (' . __('service_unavailable') . ')'}}</span>
+                                </button>
                             @endif
                         @endif
                     </div>

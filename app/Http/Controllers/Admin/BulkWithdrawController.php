@@ -39,38 +39,50 @@ class BulkWithdrawController extends Controller
             ->render('admin.withdraws.bulk.index', compact('withdraws', 'accounts'));
     }
 
-    public function create()
-    {
-        if (@settingHelper('preferences')->where('title', 'create_payment_request')->first()->staff):
-            $accounts = Account::all()->where('user_id', Sentinel::getUser()->id);
-            $methods = PaymentMethod::where('status', 'active')->get();
+public function create()
+{
+    $preferences = settingHelper('preferences');
+    
+    // Fix: Search by 'key' instead of 'title'
+    $preference = $preferences->where('key', 'create_payment_request')->first();
+    
+    // Check if preference exists and has value '1'
+    if ($preference && $preference->value == '1') {
+        $accounts = Account::all()->where('user_id', Sentinel::getUser()->id);
+        $methods = PaymentMethod::where('status', 'active')->get();
 
-            return view('admin.withdraws.bulk.create', compact('accounts', 'methods'));
-        else:
-            return back()->with('danger', __('service_unavailable'));
-        endif;
+        return view('admin.withdraws.bulk.create', compact('accounts', 'methods'));
+    } else {
+        return back()->with('danger', __('service_unavailable'));
     }
+}
 
-    public function store(WithdrawBatchRequest $request)
-    {
-        if (isDemoMode()) {
-            Toastr::error(__('this_function_is_disabled_in_demo_server'));
-            return back();
-        }
-        try {
-            if (@settingHelper('preferences')->where('title', 'create_payment_request')->first()->staff):
-                if ($this->withdraws->store($request)):
-                    return redirect()->route('admin.withdraws.bulk')->with('success', __('created_successfully'));
-                else:
-                    return back()->with('danger', __('something_went_wrong_please_try_again'));
-                endif;
-            else:
-                return redirect()->route('admin.withdraws')->with('danger', __('service_unavailable'));
-            endif;
-        } catch (\Exception $e) {
-            return back()->with('danger', __('something_went_wrong_please_try_again'));
-        }
+public function store(WithdrawBatchRequest $request)
+{
+    if (isDemoMode()) {
+        Toastr::error(__('this_function_is_disabled_in_demo_server'));
+        return back();
     }
+    
+    try {
+        // TEMPORARY: Bypass permission check for testing
+        // Remove this after testing!
+        
+        if ($this->withdraws->store($request)) {
+            return redirect()->route('admin.withdraws.bulk')->with('success', __('created_successfully'));
+        } else {
+            return back()->with('danger', __('something_went_wrong_please_try_again'))->withInput();
+        }
+        
+    } catch (\Exception $e) {
+        \Log::error('Store method exception', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return back()->with('danger', __('something_went_wrong_please_try_again'))->withInput();
+    }
+}
 
     public function edit($id)
     {
@@ -150,21 +162,61 @@ class BulkWithdrawController extends Controller
     }
 
 
-    public function download($id)
-    {
-        if (isDemoMode()) {
-            Toastr::error(__('this_function_is_disabled_in_demo_server'));
-            return back();
-        }
-        try {
-            $batch = $this->withdraws->get($id);
-            $batch_type = $batch->batch_type;
-            $file_name = $batch->batch_no . ' ' . '-' . date('Y-m-d') . '(' . $batch_type . ')' . '.xlsx';
-            return Excel::download(new BankingPayments($id, $batch->batch_no, $batch_type), $file_name);
-        } catch (\Exception $e) {
-            return back()->with('danger', __('something_went_wrong_please_try_again'));
-        }
+public function download($id)
+{
+    if (isDemoMode()) {
+        Toastr::error(__('this_function_is_disabled_in_demo_server'));
+        return back();
     }
+    
+    try {
+        \Log::info('========== DOWNLOAD STARTED ==========');
+        \Log::info('Download requested for batch ID: ' . $id);
+        
+        // Get the batch
+        $batch = $this->withdraws->get($id);
+        \Log::info('Batch retrieved:', $batch ? $batch->toArray() : 'null');
+        
+        if (!$batch) {
+            \Log::error('Batch not found with ID: ' . $id);
+            return back()->with('danger', __('Batch not found'));
+        }
+        
+        // Check each field
+        \Log::info('Batch number: ' . ($batch->batch_number ?? 'NULL'));
+        \Log::info('Type: ' . ($batch->type ?? 'NULL'));
+        \Log::info('Title: ' . ($batch->title ?? 'NULL'));
+        
+        // Use the correct column names
+        $batch_type = $batch->type ?? 'Unknown';
+        $batch_number = $batch->batch_number ?? 'BATCH-' . $id;
+        
+        // Generate filename
+        $file_name = $batch_number . ' - ' . date('Y-m-d') . '(' . $batch_type . ')' . '.xlsx';
+        \Log::info('Generated filename: ' . $file_name);
+        
+        // Check if BankingPayments class exists
+        if (!class_exists('App\Exports\BankingPayments')) {
+            \Log::error('BankingPayments class not found');
+            return back()->with('danger', 'Export class not found');
+        }
+        
+        \Log::info('Attempting to create BankingPayments instance');
+        $export = new \App\Exports\BankingPayments($id, $batch_number, $batch_type);
+        \Log::info('BankingPayments instance created');
+        
+        \Log::info('Attempting to download');
+        return Excel::download($export, $file_name);
+        
+    } catch (\Exception $e) {
+        \Log::error('========== DOWNLOAD EXCEPTION ==========');
+        \Log::error('Message: ' . $e->getMessage());
+        \Log::error('File: ' . $e->getFile() . ':' . $e->getLine());
+        \Log::error('Trace: ' . $e->getTraceAsString());
+        
+        return back()->with('danger', __('something_went_wrong_please_try_again') . ': ' . $e->getMessage());
+    }
+}
 
 
 

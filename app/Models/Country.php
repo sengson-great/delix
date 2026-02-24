@@ -17,12 +17,25 @@ class Country extends Model
 
     public function flag()
     {
-        return $this->hasOne(FlagIcon::class, 'title', 'iso2');
+        return $this->hasOne(FlagIcon::class, 'country_code', 'iso2');
     }
 
     public function getFlagIconAttribute()
     {
-        return $this->flag ? static_asset($this->flag->image) : static_asset('images/default/default-image-40x40.png');
+        // Try to get the flag model
+        $flag = null;
+        
+        if ($this->flag instanceof \App\Models\FlagIcon) {
+            $flag = $this->flag;
+        } elseif (is_numeric($this->flag)) {
+            $flag = \App\Models\FlagIcon::find($this->flag);
+        }
+        
+        if ($flag && $flag->image) {
+            return static_asset($flag->image);
+        }
+        
+        return static_asset('images/default/default-image-40x40.png');
     }
 
     public function scopeActive($query)

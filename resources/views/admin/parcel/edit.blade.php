@@ -93,7 +93,7 @@
                                         <select class="without_search form-select form-control parcel_type @error('parcel_type') is-invalid @enderror"
                                             name="parcel_type">
                                             <option value="">{{ __('select_type') }}</option>
-                                            @if (settingHelper('preferences')->where('title', 'same_day')->first()->staff)
+                                            @if (settingHelper('preferences')->where('key', 'same_day')->first()->staff)
                                             <option value="same_day"
                                                 {{ old('parcel_type') == 'same_day' ? 'selected' : ($parcel->parcel_type == 'same_day' ? 'selected' : '') }}>
                                                 {{ __('same_day') }}

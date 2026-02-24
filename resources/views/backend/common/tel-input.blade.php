@@ -1,6 +1,6 @@
 @php
     $countries = \App\Models\Country::with('flag')
-        ->where('status', 1)
+        ->where('is_active', 1)
         ->orderBy('name')
         ->get();
     $default_country = count($countries) > 0 ? $countries->where('id', $country_id)->first() : null;
@@ -22,9 +22,9 @@
                     @else
                         <a href="javascript:void(0)" class="dropdown-item dropdown-toggle changable_flag"
                             data-bs-toggle="dropdown" aria-expanded="false">
-                            <span class="country-flag"><img src="{{ static_asset('admin/img/flag/BD.svg') }}"
+                            <span class="country-flag"><img src="{{ static_asset('admin/img/flag/cambodia.png') }}"
                                     alt="Flag"></span>
-                            <span class="country-code-number">+880</span>
+                            <span class="country-code-number">+885</span>
                         </a>
                     @endif
 

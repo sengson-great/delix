@@ -19,399 +19,235 @@
                         </a>
                     </div>
                 </div>
-                <form
-                    action="{{ Sentinel::getUser()->user_type == 'merchant' ? route('merchant.parcel.store') : route('merchant.staff.parcel.store') }}"
-                    class="form-validate" method="POST" enctype="multipart/form-data">
-                    <input type="hidden"
-                        value="{{ Sentinel::getUser()->user_type == 'merchant' ? Sentinel::getUser()->merchant->id : Sentinel::getUser()->merchant_id }}"
-                        name="merchant" class="merchant">
+                <form action="{{ route('parcel.store') }}" class="form-validate" method="POST" enctype="multipart/form-data">
                     @csrf
+                    <input type="hidden" name="merchant" value="{{ Sentinel::getUser()->merchant_id ?? Sentinel::getUser()->merchant->id ?? '' }}" class="merchant">
+                    
                     <div class="row">
                         <div class="col-md-8">
                             <div class="card bg-white redious-border p-20 p-sm-30 pt-sm-30">
                                 <div class="row g-gs">
+                                    <!-- Invoice Number -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label" for="customer_invoice_no">{{ __('invoice') }}#
-                                        </label>
+                                        <label class="form-label" for="customer_invoice_no">{{ __('invoice') }}#</label>
                                         <input type="text"
                                             class="form-control @error('customer_invoice_no') is-invalid @enderror"
                                             id="customer_invoice_no"
-                                            value="{{ old('customer_invoice_no') != '' ? old('customer_invoice_no') : @$parcel->customer_invoice_no }}"
-                                            name="customer_invoice_no" placeholder="{{ __('invoice_or_memo_no') }}">
-                                        @if ($errors->has('customer_invoice_no'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('customer_invoice_no') }}</p>
-                                            </div>
-                                        @endif
+                                            value="{{ old('customer_invoice_no', @$parcel->customer_invoice_no) }}"
+                                            name="customer_invoice_no" 
+                                            placeholder="{{ __('invoice_or_memo_no') }}">
+                                        @error('customer_invoice_no')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
                                     </div>
+
+                                    <!-- Shop Dropdown -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label" for="area">{{ __('shop') }}
-                                        </label>
-                                        <select
-                                            class="without_search form-select form-control select-shop @error('shop') is-invalid @enderror"
-                                            data-url="{{ Sentinel::getUser()->user_type == 'merchant' ? route('merchant.shop') : route('merchant.staff.shop') }}"
-                                            name="shop">
+                                        <label class="form-label" for="shop">{{ __('shop') }} <span class="text-danger">*</span></label>
+                                        <select class="form-select form-control select-shop @error('shop') is-invalid @enderror"
+                                                name="shop" id="shop_select" required>
                                             <option value="">{{ __('select_shop') }}</option>
-                                            @foreach ($shops as $shop)
-                                                <option value="{{ $shop->id }}" {{ @$parcel->shop_id == $shop->id ? 'selected' : ($shop->default ? 'selected' : '') }}> {{ __($shop->shop_name) }}
-                                                </option>
-                                            @endforeach
+                                            @if(isset($shops) && $shops->count() > 0)
+                                                @foreach ($shops as $shop)
+                                                    <option value="{{ $shop->id }}" 
+                                                        data-branch="{{ $shop->branch->name ?? '' }}"
+                                                        data-phone="{{ $shop->shop_phone_number ?? '' }}"
+                                                        data-address="{{ $shop->address ?? '' }}"
+                                                        {{ old('shop') == $shop->id ? 'selected' : '' }}
+                                                        {{ isset($parcel) && $parcel->shop_id == $shop->id ? 'selected' : '' }}
+                                                        {{ (!isset($parcel) && isset($default_shop) && $default_shop->id == $shop->id) ? 'selected' : '' }}>
+                                                        {{ $shop->shop_name }}
+                                                        @if($shop->default)
+                                                            ({{ __('default') }})
+                                                        @endif
+                                                    </option>
+                                                @endforeach
+                                            @else
+                                                <option value="" disabled>{{ __('no_shops_available') }}</option>
+                                            @endif
                                         </select>
-                                        @if ($errors->has('shop'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('shop') }}</p>
-                                            </div>
-                                        @endif
+                                        @error('shop')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
                                     </div>
+
+                                    <!-- Customer Name -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label"
-                                            for="customer_name">{{ __('customer') . ' ' . __('name') }}
-                                            <span class="text-danger">*</span></label>
+                                        <label class="form-label" for="customer_name">{{ __('customer') . ' ' . __('name') }} <span class="text-danger">*</span></label>
                                         <input type="text" class="form-control @error('customer_name') is-invalid @enderror"
                                             id="customer_name"
-                                            value="{{ old('customer_name') != '' ? old('customer_name') : @$parcel->customer_name }}"
-                                            name="customer_name" placeholder="{{ __('recipient_name') }}">
-                                        @if ($errors->has('customer_name'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('customer_name') }}</p>
-                                            </div>
-                                        @endif
+                                            value="{{ old('customer_name', @$parcel->customer_name) }}"
+                                            name="customer_name" 
+                                            placeholder="{{ __('recipient_name') }}" required>
+                                        @error('customer_name')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
                                     </div>
+
+                                    <!-- Customer Phone -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label"
-                                            for="customer_phone_number">{{ __('customer') . ' ' . __('phone') }}
-                                            <span class="text-danger">*</span></label>
+                                        <label class="form-label" for="customer_phone_number">{{ __('customer') . ' ' . __('phone') }} <span class="text-danger">*</span></label>
                                         <input type="number"
                                             class="form-control @error('customer_phone_number') is-invalid @enderror"
                                             id="customer_phone_number"
-                                            value="{{ old('customer_phone_number') != '' ? old('customer_phone_number') : @$parcel->customer_phone_number }}"
+                                            value="{{ old('customer_phone_number', @$parcel->customer_phone_number) }}"
                                             name="customer_phone_number"
-                                            placeholder="{{ __('recipient') . ' ' . __('phone') }}">
-                                        @if ($errors->has('customer_phone_number'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('customer_phone_number') }}</p>
-                                            </div>
-                                        @endif
+                                            placeholder="{{ __('recipient') . ' ' . __('phone') }}" required>
+                                        @error('customer_phone_number')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
                                     </div>
+
+                                    <!-- Delivery Area Dropdown -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label" for="area">{{ __('delivery_area') }}
-                                            <span class="text-danger">*</span></label>
-                                        <select
-                                            class="without_search form-select form-control parcel_type @error('parcel_type') is-invalid @enderror"
-                                            name="parcel_type">
+                                        <label class="form-label" for="parcel_type">{{ __('delivery_area') }} <span class="text-danger">*</span></label>
+                                        <select class="form-select form-control @error('parcel_type') is-invalid @enderror" 
+                                                name="parcel_type" id="parcel_type" required>
                                             <option value="" selected disabled>{{ __('select_type') }}</option>
-                                            @if (settingHelper('preferences')->where('title', 'same_day')->first()->merchant)
-                                                <option value="same_day" {{ old('parcel_type') == 'same_day' ? 'selected' : (@$parcel->parcel_type == 'same_day' ? 'selected' : '') }}>
-                                                    {{ __('same_day') }}
-                                                </option>
-                                            @endif
-                                            @if (settingHelper('preferences')->where('title', 'sub_city')->first()->merchant)
-                                                <option value="sub_city" {{ old('parcel_type') == 'sub_city' ? 'selected' : (@$parcel->parcel_type == 'sub_city' ? 'selected' : '') }}>
-                                                    {{ __('sub_city') }}
-                                                </option>
-                                            @endif
-                                            @if (settingHelper('preferences')->where('title', 'sub_urban_area')->first()->merchant)
-                                                <option value="outside_city" {{ old('parcel_type') == 'outside_city' ? 'selected' : (@$parcel->parcel_type == 'sub_urban_area' ? 'selected' : '') }}>
-                                                    {{ __('sub_urban_area') }}
-                                                </option>
-                                            @endif
+                                            <option value="same_day" {{ old('parcel_type', @$parcel->parcel_type) == 'same_day' ? 'selected' : '' }}>{{ __('same_day') }}</option>
+                                            <option value="sub_city" {{ old('parcel_type', @$parcel->parcel_type) == 'sub_city' ? 'selected' : '' }}>{{ __('sub_city') }}</option>
+                                            <option value="outside_city" {{ old('parcel_type', @$parcel->parcel_type) == 'outside_city' ? 'selected' : '' }}>{{ __('sub_urban_area') }}</option>
                                         </select>
-                                        @if ($errors->has('parcel_type'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ __('delivery_area_required') }}</p>
-                                            </div>
-                                        @endif
+                                        @error('parcel_type')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
                                     </div>
 
-
+                                    <!-- Weight Dropdown -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label" for="fv-full-name">{{ __('weight') }}
-                                            <span class="text-danger">*</span></label>
-                                        <select
-                                            class="without_search form-select form-control weight @error('weight') is-invalid @enderror"
-                                            name="weight">
-
-                                            @foreach ($charges as $charge)
-                                                <option value="{{ $charge->weight }}" {{ $charge->weight == @$parcel->weight ? 'selected' : '' }}>
-                                                    {{ $charge->weight }}{{ ' ' . __(setting('default_weight')) }}
-                                                </option>
-                                            @endforeach
+                                        <label class="form-label" for="weight">{{ __('weight') }} <span class="text-danger">*</span></label>
+                                        <select class="form-select form-control weight @error('weight') is-invalid @enderror" 
+                                                name="weight" id="weight" required>
+                                            <option value="">{{ __('select_weight') }}</option>
+                                            @if(isset($charges) && $charges->count() > 0)
+                                                @foreach ($charges as $charge)
+                                                    <option value="{{ $charge->weight }}" 
+                                                        data-charge="{{ $charge->charge ?? 0 }}"
+                                                        {{ old('weight', @$parcel->weight) == $charge->weight ? 'selected' : '' }}>
+                                                        {{ $charge->weight }} {{ setting('default_weight') ?? 'kg' }}
+                                                    </option>
+                                                @endforeach
+                                            @endif
                                         </select>
-                                        @if ($errors->has('weight'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('weight') }}</p>
-                                            </div>
-                                        @endif
+                                        @error('weight')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
                                     </div>
 
+                                    <!-- Cash Collection -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label" for="fv-full-name">{{ __('cash_collection') }}
-                                            ({{ setting('default_currency') }})
-                                            <span class="text-danger">*</span></label>
-                                        <input type="number"
+                                        <label class="form-label" for="price">{{ __('cash_collection') }} ({{ setting('default_currency') }}) <span class="text-danger">*</span></label>
+                                        <input type="number" step="0.01"
                                             class="form-control cash-collection @error('price') is-invalid @enderror"
-                                            id="fv-full-name"
-                                            value="{{ old('price') != '' ? old('price') : @$parcel->price }}" name="price"
-                                            placeholder="{{ __('cash_amount_including_delivery_charge') }}">
-                                        @if ($errors->has('price'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('price') }}</p>
-                                            </div>
-                                        @endif
+                                            id="price"
+                                            value="{{ old('price', @$parcel->price ?? 0) }}"
+                                            name="price"
+                                            placeholder="{{ __('cash_amount_including_delivery_charge') }}" required>
+                                        @error('price')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
                                     </div>
+
+                                    <!-- Selling Price -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label" for="fv-full-name">{{ __('selling_price') }}
-                                            ({{ setting('default_currency') }})</label>
-                                        <input type="number" class="form-control" id="fv-full-name"
-                                            value="{{ old('selling_price') != '' ? old('selling_price') : @$parcel->selling_price }}"
-                                            name="selling_price" placeholder="{{ __('selling_price_of_parcel') }}">
-                                        @if ($errors->has('selling_price'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('selling_price') }}</p>
-                                            </div>
-                                        @endif
+                                        <label class="form-label" for="selling_price">{{ __('selling_price') }} ({{ setting('default_currency') }})</label>
+                                        <input type="number" step="0.01" class="form-control" id="selling_price"
+                                            value="{{ old('selling_price', @$parcel->selling_price) }}"
+                                            name="selling_price" 
+                                            placeholder="{{ __('selling_price_of_parcel') }}">
                                     </div>
+
+                                    <!-- Customer Address -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label"
-                                            for="customer_address">{{ __('customer') . ' ' . __('address') }}
-                                            <span class="text-danger">*</span></label>
+                                        <label class="form-label" for="customer_address">{{ __('customer') . ' ' . __('address') }} <span class="text-danger">*</span></label>
                                         <textarea class="form-control @error('customer_address') is-invalid @enderror"
-                                            id="customer_address" placeholder="{{ __('recipient') . ' ' . __('address') }}"
-                                            name="customer_address">{{ old('customer_address') != '' ? old('customer_address') : @$parcel->customer_address }}</textarea>
-                                        @if ($errors->has('customer_address'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('customer_address') }}</p>
-                                            </div>
-                                        @endif
+                                            id="customer_address" 
+                                            placeholder="{{ __('recipient') . ' ' . __('address') }}"
+                                            name="customer_address" required>{{ old('customer_address', @$parcel->customer_address) }}</textarea>
+                                        @error('customer_address')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
                                     </div>
+
+                                    <!-- Note -->
                                     <div class="col-6 mb-3">
-                                        <label class="form-label" for="note">{{ __('note') }}
-                                        </label>
+                                        <label class="form-label" for="note">{{ __('note') }}</label>
                                         <textarea class="form-control" id="note"
                                             placeholder="{{ __('note') . ' (' . __('parcel_note_from_merchant') . ')' }}"
-                                            name="note">{{ old('note') != '' ? old('note') : @$parcel->note }}</textarea>
-                                        @if ($errors->has('note'))
-                                            <div class="invalid-feedback help-block">
-                                                <p>{{ $errors->first('note') }}</p>
-                                            </div>
-                                        @endif
+                                            name="note">{{ old('note', @$parcel->note) }}</textarea>
                                     </div>
-
                                 </div>
+
+                                <!-- Checkboxes -->
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label class="form-label mt-4" for="note">
-                                        </label>
-                                        <div class=" mb-3">
-                                            <div class="preview-block">
-                                                <div class="custom-control custom-checkbox">
-                                                    <label class="custom-control-label" for="fragile">
-                                                        <input type="checkbox" class="custom-control-input" id="fragile"
-                                                            name="fragile" {{ isset($parcel) ? ($parcel->fragile == 1 ? 'checked' : '') : '' }}>
-                                                        <span class="text-capitalize">
-                                                            {{ __('liquid') }}/{{ __('fragile') }}</span>
-                                                    </label>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label" for="fv-full-name">{{ __('packaging') }}</label>
-                                        <select class="without_search form-select form-control packaging" name="packaging">
-                                            <option value="no">{{ __('select_packing') }}
-                                            </option>
-                                            @foreach (settingHelper('package_and_charges') as $package_and_charge)
-                                                <option value="{{ $package_and_charge->id }}" {{ isset($parcel) ? ($parcel->packaging == $package_and_charge->id ? 'selected' : '') : '' }}>
-                                                    {{ __($package_and_charge->package_type) }}
-                                                    ({{ format_price($package_and_charge->charge) }})
-                                                </option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                    <div class="col-md-12">
-                                        <div class="row pt-1">
-                                            <div class="col-md-6">
-                                                <div class="mb-3">
-                                                    <div class="preview-block">
-                                                        <div class="custom-control custom-checkbox">
-                                                            <label class="custom-control-label" for="open_box">
-                                                                <input type="checkbox" class="custom-control-input"
-                                                                    id="open_box" value="1" name="open_box">
-                                                                <span class="text-capitalize">
-                                                                    {{ __('open_box') }}</span>
-                                                            </label>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-12">
-                                        <div class="row pt-1">
-                                            <div class="col-md-6">
-                                                <div class="mb-3">
-                                                    <div class="preview-block">
-                                                        <div class="custom-control custom-checkbox">
-                                                            <label class="custom-control-label" for="home_delivery">
-                                                                <input type="checkbox" class="custom-control-input"
-                                                                    id="home_delivery" name="home_delivery" value="1"
-                                                                    checked>
-                                                                <span class="text-capitalize">
-                                                                    {{ __('home_delivery') }}</span>
-                                                            </label>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                        <div class="custom-control custom-checkbox">
+                                            <input type="checkbox" class="custom-control-input" id="fragile" name="fragile" value="1"
+                                                {{ isset($parcel) && $parcel->fragile == 1 ? 'checked' : '' }}>
+                                            <label class="custom-control-label" for="fragile">
+                                                <span class="text-capitalize">{{ __('liquid') }}/{{ __('fragile') }}</span>
+                                            </label>
                                         </div>
                                     </div>
                                 </div>
 
+                                <!-- Submit Button -->
                                 <div class="row">
                                     <div class="col-md-12 text-right mt-4">
-                                        <div class="">
-                                            <button type="submit"
-                                                class="btn sg-btn-primary resubmit">{{ __('submit') }}</button>
-                                        </div>
+                                        <button type="submit" class="btn sg-btn-primary">{{ __('submit') }}</button>
                                     </div>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Right Sidebar - Charge Details & Pickup Info -->
                         <div class="col-md-4">
+                            <!-- Charge Details Card -->
                             <div class="card bg-white redious-border p-20 p-sm-30 pt-sm-30">
                                 <div class="card-title-group mb-2">
                                     <div class="card-title">
                                         <h6 class="title">{{ __('charge_details') }}</h6>
                                     </div>
                                 </div>
-                                <ul class="nk-top-products">
-                                    <div class="card-inner p-0">
-                                        <table class="table">
-                                            <tr>
-                                                <th><span class="sub-text"><strong>{{ __('title') }}</strong></span>
-                                                </th>
-                                                <th><span class="sub-text"><strong>{{ __('amount') }}</strong></span>
-                                                </th>
-                                            </tr>
-                                            <tr>
-
-                                                <td>
-                                                    <span>{{ __('cash_collection') }}</span>
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        id="cash-collection-charge">{{ isset($parcel) ? $parcel->price : '0.00' }}</span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <span>{{ __('delivery_charge') }}</span>
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        id="delivery-charge">{{ isset($parcel) ? $parcel->charge : '0.00' }}</span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <span>{{ __('cod_charge') }}</span>
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        id="cod-charge">{{ isset($parcel) ? ($parcel->price / 100) * $parcel->cod_charge : '0.00' }}</span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <span>{{ __('vat') }}</span>
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        id="vat-charge">{{ isset($parcel) ? (($parcel->charge + $parcel->fragile_charge + $parcel->packaging_charge + ($parcel->price / 100) * $parcel->cod_charge) / 100) * $parcel->vat : '0.00' }}</span>
-                                                </td>
-                                            </tr>
-                                            <tr
-                                                class="fragile-charge-area {{ isset($parcel) ? ($parcel->fragile == 0 ? 'd-none' : '') : 'd-none' }}">
-
-                                                <td>
-                                                    <span>{{ __('liquid') }}/{{ __('fragile_charge') }}</span>
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        id="fragile-charge">{{ isset($parcel) ? ($parcel->fragile == 0 ? '0.00' : $parcel->fragile_charge) : '0.00' }}</span>
-                                                </td>
-                                            </tr>
-                                            <tr
-                                                class="packaging-charge-area {{ isset($parcel) ? ($parcel->packaging == 'no' ? 'd-none' : '') : 'd-none' }}">
-
-                                                <td>
-                                                    <span>{{ __('packaging_charge') }}</span>
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        id="packaging-charge">{{ isset($parcel) ? ($parcel->packaging == 'no' ? '0.00' : $parcel->packaging_charge) : '0.00' }}</span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <span>{{ __('total_delivery_charge') }}</span>
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        id="total-delivery-charge">{{ isset($parcel) ? $parcel->total_delivery_charge : '0.00' }}</span>
-                                                </td>
-                                            </tr>
-
-                                            <tr>
-                                                <td><span class="sub-text" id="currency"
-                                                        data-default-currency="{{ setting('default_currency') }}"><strong>{{ __('current_payable') }}</strong></span>
-                                                </td>
-                                                <td><span class="sub-text"><strong id="current-payable-charge">
-                                                            {{ setting('default_currency') }}
-                                                            {{ isset($parcel) ? $parcel->payable : '0.00' }}</strong></span>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </div>
-                                </ul>
+                                <div class="card-inner p-0">
+                                    <table class="table">
+                                        <tr>
+                                            <th>{{ __('title') }}</th>
+                                            <th>{{ __('amount') }}</th>
+                                        </tr>
+                                        <tr>
+                                            <td>{{ __('cash_collection') }}</td>
+                                            <td><span id="cash-collection-charge">0.00</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>{{ __('delivery_charge') }}</td>
+                                            <td><span id="delivery-charge">0.00</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>{{ __('total_delivery_charge') }}</td>
+                                            <td><span id="total-delivery-charge">0.00</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>{{ __('current_payable') }}</strong></td>
+                                            <td><strong id="current-payable-charge">{{ setting('default_currency') }} 0.00</strong></td>
+                                        </tr>
+                                    </table>
+                                </div>
                             </div>
 
+                            <!-- Pickup Information Card -->
                             <div class="card bg-white redious-border p-20 p-sm-30 pt-sm-30 mt-4">
                                 <div class="col-md-12 mb-3">
-                                    <label class="form-label" for="pickup_branch_id">{{ __('pickup_branch') }}</label>
-                                    <input type="text" class="form-control @error('pickup_branch_id') is-invalid @enderror"
-                                        id="shop_pickup_branch"
-                                        value="{{ old('pickup_branch_id') ? old('pickup_branch_id') : (@$parcel->branch->name ? @$parcel->branch->name : @$default_shop->branch->name) }}"
-                                        name="pickup_branch_id" placeholder="{{ __('pickup_branch') }}" readonly>
-                                    @if ($errors->has('pickup_branch_id'))
-                                        <div class="invalid-feedback help-block">
-                                            <p>{{ $errors->first('pickup_branch_id') }}</p>
-                                        </div>
-                                    @endif
+                                    <label class="form-label">{{ __('pickup_branch') }}</label>
+                                    <input type="text" class="form-control" id="shop_pickup_branch" readonly>
                                 </div>
-
                                 <div class="col-md-12 mb-3">
-                                    <label class="form-label" for="shop_phone_number">{{ __('pickup_number') }}</label>
-                                    <input type="text" class="form-control" id="shop_phone_number"
-                                        value="{{ old('shop_phone_number') ? old('shop_phone_number') : (@$parcel->pickup_shop_phone_number ? @$parcel->pickup_shop_phone_number : @$default_shop->shop_phone_number) }}"
-                                        name="shop_phone_number" placeholder="{{ __('pickup_number') }}" readonly>
-                                    @if ($errors->has('shop_phone_number'))
-                                        <div class="invalid-feedback help-block">
-                                            <p>{{ $errors->first('shop_phone_number') }}</p>
-                                        </div>
-                                    @endif
+                                    <label class="form-label">{{ __('pickup_number') }}</label>
+                                    <input type="text" class="form-control" id="shop_phone_number" readonly>
                                 </div>
-
                                 <div class="col-md-12 mb-3">
-                                    <label class="form-label" for="shop_address">{{ __('pickup_address') }}</label>
-                                    <input type="text" class="form-control" id="shop_address"
-                                        value="{{ old('shop_address') ? old('shop_address') : (@$parcel->pickup_address ? @$parcel->pickup_address : @$default_shop->address) }}"
-                                        name="shop_address" placeholder="{{ __('pickup_address') }}" readonly>
-                                    @if ($errors->has('shop_address'))
-                                        <div class="invalid-feedback help-block">
-                                            <p>{{ $errors->first('shop_address') }}</p>
-                                        </div>
-                                    @endif
+                                    <label class="form-label">{{ __('pickup_address') }}</label>
+                                    <input type="text" class="form-control" id="shop_address" readonly>
                                 </div>
                             </div>
                         </div>
@@ -420,5 +256,94 @@
             </div>
         </div>
     </div>
-    @include('admin.parcel.charge-script')
 @endsection
+
+@push('scripts')
+<script>
+$(document).ready(function() {
+    console.log('Page loaded - Dropdowns initializing...');
+    
+    // Log available data
+    console.log('Shops available:', $('.select-shop option').length - 1);
+    console.log('Weights available:', $('#weight option').length - 1);
+    
+    // Initialize any select2 if available
+    if ($.fn.select2) {
+        $('.form-select').select2({
+            width: '100%',
+            placeholder: '{{ __('select_option') }}'
+        });
+    }
+    
+    // Handle shop change
+    $('.select-shop').on('change', function() {
+        var selectedOption = $(this).find(':selected');
+        var shopId = $(this).val();
+        
+        console.log('Shop selected:', shopId);
+        
+        if (shopId) {
+            // Get data from option attributes
+            var branchName = selectedOption.data('branch') || '';
+            var phoneNumber = selectedOption.data('phone') || '';
+            var address = selectedOption.data('address') || '';
+            
+            console.log('Shop data:', {branch: branchName, phone: phoneNumber, address: address});
+            
+            // Update fields
+            $('#shop_pickup_branch').val(branchName);
+            $('#shop_phone_number').val(phoneNumber);
+            $('#shop_address').val(address);
+        } else {
+            // Clear fields
+            $('#shop_pickup_branch').val('');
+            $('#shop_phone_number').val('');
+            $('#shop_address').val('');
+        }
+    });
+    
+    // Trigger change on page load if shop is pre-selected
+    if ($('.select-shop').val()) {
+        console.log('Triggering initial shop load for ID:', $('.select-shop').val());
+        $('.select-shop').trigger('change');
+    }
+    
+    // Handle weight change
+    $('#weight').on('change', function() {
+        var selectedOption = $(this).find(':selected');
+        var deliveryCharge = parseFloat(selectedOption.data('charge')) || 0;
+        
+        console.log('Weight selected - Delivery charge:', deliveryCharge);
+        
+        $('#delivery-charge').text(deliveryCharge.toFixed(2));
+        calculateTotal();
+    });
+    
+    // Handle cash collection change
+    $('.cash-collection').on('keyup change', function() {
+        calculateTotal();
+    });
+    
+    // Calculate total function
+    function calculateTotal() {
+        var cashCollection = parseFloat($('.cash-collection').val()) || 0;
+        var deliveryCharge = parseFloat($('#delivery-charge').text()) || 0;
+        
+        $('#cash-collection-charge').text(cashCollection.toFixed(2));
+        $('#total-delivery-charge').text(deliveryCharge.toFixed(2));
+        
+        var payable = cashCollection - deliveryCharge;
+        $('#current-payable-charge').text('{{ setting("default_currency") }} ' + (payable > 0 ? payable.toFixed(2) : '0.00'));
+        
+        console.log('Total calculated:', {cash: cashCollection, delivery: deliveryCharge, payable: payable});
+    }
+    
+    // Trigger initial calculation if weight is pre-selected
+    if ($('#weight').val()) {
+        $('#weight').trigger('change');
+    }
+});
+</script>
+@endpush
+
+@include('admin.parcel.charge-script')

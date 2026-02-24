@@ -18,13 +18,34 @@
                             <a href="#" class="d-flex align-items-center btn sg-btn-primary gap-2" id="filterBTN">
                                 <i class="las la-filter"></i>
                             </a>
-                            @if (@settingHelper('preferences')->where('title', 'create_payment_request')->first()->staff)
+                            
+                            @php
+                                $pref = settingHelper('preferences')?->where('key', 'create_payment_request')->first();
+                                $canCreate = false;
+                                
+                                if ($pref) {
+                                    $value = $pref->value;
+                                    $decodedValue = json_decode($value, true);
+                                    
+                                    if (is_array($decodedValue) && isset($decodedValue['staff'])) {
+                                        $canCreate = $decodedValue['staff'] == 1;
+                                    } else {
+                                        $canCreate = $value == '1' || $value == 1 || $value == 'true';
+                                    }
+                                }
+                            @endphp
+                            
+                            @if($canCreate)
                                 <a href="{{ route('admin.withdraw.create') }}"
-                                    class="d-flex align-items-center btn sg-btn-primary gap-2"><i
-                                        class="icon la la-plus"></i><span>{{ __('create') . ' ' . __('request')}}</span></a>
+                                    class="d-flex align-items-center btn sg-btn-primary gap-2">
+                                    <i class="icon la la-plus"></i>
+                                    <span>{{ __('create') . ' ' . __('request')}}</span>
+                                </a>
                             @else
-                                <button class="d-flex align-items-center btn sg-btn-primary gap-2"><i
-                                        class="icon la la-plus"></i><span>{{ __('add') . ' (' . __('service_unavailable') . ')' }}</span></button>
+                                <button class="d-flex align-items-center btn sg-btn-primary gap-2" disabled>
+                                    <i class="icon la la-plus"></i>
+                                    <span>{{ __('add') . ' (' . __('service_unavailable') . ')' }}</span>
+                                </button>
                             @endif
                         </div>
                     @endif

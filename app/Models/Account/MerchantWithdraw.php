@@ -82,4 +82,9 @@ class MerchantWithdraw extends Model
             $model->updated_at = date('Y-m-d H:i:s');
         });
     }
+
+    public function batch()
+    {
+        return $this->belongsTo(WithdrawBatch::class, 'withdraw_batch_id', 'id');
+    }
 }

@@ -27,18 +27,22 @@ class WebsitePageDatatable extends DataTable
             })->setRowId('id');
     }
 
-    public function query(): QueryBuilder
-    {
-        $model = new Page;
-
-        return $model
-
-        ->when($this->request->search['value'] ?? false, function($query, $search){
-            $query->where('question', 'like', "%$search%")
-            ->orWhere('answer' , 'like',"%$search%");
-        })
-        ->with('language')->latest()->newQuery();
+    public function query(Page $model): QueryBuilder
+{
+    $query = $model->newQuery()->with('language')->latest();
+    
+    // Handle search
+    if ($this->request->has('search') && !empty($this->request->search['value'])) {
+        $search = $this->request->search['value'];
+        $query->where(function($q) use ($search) {
+            $q->where('title', 'like', "%{$search}%")
+              ->orWhere('content', 'like', "%{$search}%")
+              ->orWhere('link', 'like', "%{$search}%");
+        });
     }
+    
+    return $query;
+}
 
     public function html(): HtmlBuilder
     {

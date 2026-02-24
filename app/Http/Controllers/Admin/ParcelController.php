@@ -58,37 +58,87 @@ class ParcelController extends Controller
         $data['third_parties'] = ThirdParty::where('status', true)->orderBy('name')->get();
         return $dataTable->render('admin.parcel.index', $data);
     }
+
     public function create()
     {
-        if (@settingHelper('preferences')->where('title', 'create_parcel')->first()->staff):
-            $charges = Charge::all();
-            $branchs = Branch::all();
-            return view('admin.parcel.create', compact('charges', 'branchs'));
-        else:
-            return back()->with('danger', __('service_unavailable'));
-        endif;
-    }
-    public function store(ParcelStoreRequest $request)
-    {
-        if (isDemoMode()) {
-            Toastr::error(__('this_function_is_disabled_in_demo_server'));
-            return back();
+        // Make sure you're passing these variables to the view
+        $charges = Charge::all();
+        $branchs = Branch::all();
+        
+        // Get shops for the current merchant
+        $user = Sentinel::getUser() ;
+
+        Log::info('Current user: ' . ($user ? $user->shop_name : 'No user authenticated'));
+        
+        $merchant_id = $user->merchant_id ?? null;
+        
+        if ($merchant_id) {
+            $shops = Shop::where('merchant_id', $merchant_id)->get();
+        } else {
+            $shops = collect(); // Empty collection
         }
-        try {
-            if (@settingHelper('preferences')->where('title', 'create_parcel')->first()->staff):
-                if ($this->parcels->store($request)):
-                    return redirect()->back()->with('success', __('created_successfully'));
-                else:
-                    return back()->with('danger', __('something_went_wrong_please_try_again'))->withInput();
-                endif;
-            else:
-                return redirect()->route('parcel')->with('danger', __('service_unavailable'));
-            endif;
-        } catch (\Exception $e) {
-            Log::error('Parcel Store Error: ' . $e);
-            return back()->with('danger', __('something_went_wrong_please_try_again'))->withInput();
-        }
+        
+        // Also get default shop for the merchant
+        $default_shop = Shop::where('merchant_id', $merchant_id)->where('default', 1)->first();
+        
+        return view('admin.parcel.create', compact('charges', 'branchs', 'shops', 'default_shop'));
     }
+public function store(ParcelStoreRequest $request)
+{
+    if (isDemoMode()) {
+        Toastr::error(__('this_function_is_disabled_in_demo_server'));
+        return back();
+    }
+    
+    try {
+        // Get preferences
+        $preferences = settingHelper('preferences');
+        
+        // Find create_parcel preference
+        $createParcelPref = null;
+        if ($preferences) {
+            $createParcelPref = $preferences->where('key', 'create_parcel')->first();
+        }
+        
+        // Check if create parcel is allowed
+        $canCreateParcel = false;
+        if ($createParcelPref) {
+            // Try to get staff value from different possible structures
+            if (isset($createParcelPref->staff)) {
+                $canCreateParcel = ($createParcelPref->staff == 1);
+            } elseif (isset($createParcelPref->value)) {
+                $value = json_decode($createParcelPref->value, true);
+                $canCreateParcel = (isset($value['staff']) && $value['staff'] == 1);
+            }
+        }
+        
+        // Log for debugging
+        \Log::info('Parcel creation check:', [
+            'preferences_exists' => $preferences ? 'yes' : 'no',
+            'create_parcel_exists' => $createParcelPref ? 'yes' : 'no',
+            'can_create' => $canCreateParcel ? 'yes' : 'no'
+        ]);
+        
+        // If no preference found, default to allowing creation
+        if (!$createParcelPref) {
+            $canCreateParcel = true;
+            \Log::info('No create_parcel preference found, defaulting to true');
+        }
+        
+        if ($canCreateParcel) {
+            if ($this->parcels->store($request)) {
+                return redirect()->route('parcel')->with('success', __('created_successfully'));
+            } else {
+                return back()->with('danger', __('something_went_wrong_please_try_again'))->withInput();
+            }
+        } else {
+            return redirect()->route('parcel')->with('danger', __('service_unavailable'));
+        }
+    } catch (\Exception $e) {
+        \Log::error('Parcel Store Error: ' . $e->getMessage());
+        return back()->with('danger', __('something_went_wrong_please_try_again'))->withInput();
+    }
+}
     public function edit($id)
     {
         $parcel = $this->parcels->get($id);
