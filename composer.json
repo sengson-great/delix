@@ -24,6 +24,7 @@
         "laravel/tinker": "^2.8",
         "maatwebsite/excel": "^3.1",
         "milon/barcode": "^10.0",
+        "predis/predis": "^3.4",
         "pusher/pusher-php-server": "^7.2",
         "simplesoftwareio/simple-qrcode": "~4",
         "twilio/sdk": "^7.16",
