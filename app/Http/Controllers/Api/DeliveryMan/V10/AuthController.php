@@ -17,6 +17,7 @@ use Cartalyst\Sentinel\Checkpoints\ThrottlingException;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
 use App\Models\Notification;
 use App\Models\NotificationUser;
 use App\Traits\ApiReturnFormatTrait;
@@ -398,9 +399,11 @@ class AuthController extends Controller
             if (!$user = JWTAuth::parseToken()->authenticate()) {
                 return $this->responseWithError(__('unauthorized_user'), '' , 404);
             }
+            $data = Cache::remember("rider_profile_{$user->id}", now()->addMinutes(5), function () use ($user) {
             $data['id'] = $user->id;
-
-            $data       = $this->getProfile($user);
+            $data = $this->getProfile($user); // your original method
+            return $data;
+        });
 
             return $this->responseWithSuccess(__('successfully_found'), '', $data, 200);
         }catch (\Exception $e){
@@ -449,6 +452,8 @@ class AuthController extends Controller
                 $delivery_man->driving_license               = $images;
             }
             $delivery_man->save();
+
+            Cache::forget("rider_profile_{$user->id}");
 
             $datas = $this->getProfile($user);
 
@@ -668,18 +673,24 @@ class AuthController extends Controller
                 return $this->responseWithError(__('unauthorized_user'), '' , 404);
             }
 
-            $page         = $request->page ?? 1;
-            $offset       = ( $page * \Config::get('parcel.api_paginate') ) - \Config::get('parcel.api_paginate');
-            $limit        = \Config::get('parcel.api_paginate');
-            $delivery_man = DeliveryMan::find($user->deliveryMan->id);
-            $logs         = $delivery_man->paymentLogs()->get();
-            $logs         = $this->formatLogs($logs);
-            $logs         = $logs->sortDesc()->skip($offset)->take($limit)->flatten();
+            $page   = $request->page ?? 1;
+            $offset = ($page * config('parcel.api_paginate')) - config('parcel.api_paginate');
+            $limit  = config('parcel.api_paginate');
 
-            $data = [
-                'log' => $logs,
-            ];
+            $cacheKey = "payment_logs_{$user->id}_page_{$page}";
 
+            $logs = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($user, $offset, $limit) {
+                $delivery_man = DeliveryMan::find($user->deliveryMan->id);
+                return $delivery_man->paymentLogs()
+                    ->skip($offset)
+                    ->take($limit)
+                    ->get();
+            });
+
+            $logs = $this->formatLogs($logs);
+            $logs = $logs->sortDesc()->values(); // re-index after sort
+
+            $data = ['log' => $logs];
 
             return $this->responseWithSuccess(__('successfully_found'),'', $data ,200);
         } catch (\Exception $e) {
