@@ -55,8 +55,6 @@
                         </a>
                     </li>
 
-                    <li>Test</li>
-
                     <li class="visit-website dropdown notification">
                         <a href="#" class="dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="las la-bell"></i>
