@@ -23,15 +23,15 @@ class BulkRepository implements BulkInterface {
     {
         DB::beginTransaction();
         try {
-            foreach ($data['parcel_list'] as $parcel_id):
+            foreach ($data['parcels'] as $parcel_id):
 
                 $parcel                     = $this->get($parcel_id);
                 $previous_status            = $parcel->status;
                 if ($previous_status == 'received' || $previous_status == 'transferred-received-by-branch' ||
-                    $previous_status == 'delivery-assigned' || $previous_status == 're-schedule-delivery'):
+                    $previous_status == 'delivery-assigned' || $previous_status == 're-schedule-delivery' || $previous_status == 'pending' || $previous_status == 'pickup-assigned' || $previous_status == 'received-by-pickup-man'):
                     $parcel->status             = ($previous_status == 'received' || $previous_status == 'transferred-received-by-branch') ? 'delivery-assigned' : 're-schedule-delivery';
                     $parcel->delivery_man_id    = $data['delivery_man'];
-                    $parcel->delivery_fee       = DeliveryMan::find($data['delivery_man'])->delivery_fee;
+                    //$parcel->delivery_fee       = DeliveryMan::find($data['delivery_man'])->delivery_fee;
                     $parcel->save();
 
                     $parcel_event                   = new ParcelEvent();
@@ -63,7 +63,7 @@ class BulkRepository implements BulkInterface {
     {
         DB::beginTransaction();
         try {
-            foreach ($data['parcel_list'] as $parcel_id):
+            foreach ($data['parcels'] as $parcel_id):
                 $parcel                             = $this->get($parcel_id);
                 $parcel->status                     = 'transferred-to-branch';
                 $parcel->transfer_to_branch_id      = $data['branch'];
@@ -94,7 +94,7 @@ class BulkRepository implements BulkInterface {
     {
         DB::beginTransaction();
         try {
-            foreach ($data['parcel_list'] as $parcel_id):
+            foreach ($data['parcels'] as $parcel_id):
 
                 $parcel                             = $this->get($parcel_id);
                 $parcel->status                     = 'transferred-received-by-branch';

@@ -25,7 +25,7 @@ class DeliveryAssignRequest extends FormRequest
     {
         return [
             'delivery_man' => 'required',
-            'parcel_list'  => 'required',
+            'parcels'  => 'required',
         ];
     }
 }

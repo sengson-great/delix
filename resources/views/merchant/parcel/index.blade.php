@@ -332,7 +332,7 @@
                         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                     });
                     const timestamp = Date.now();
-                    const filename = `parcel_list_${timestamp}.xlsx`;
+                    const filename = `parcels_${timestamp}.xlsx`;
 
                     const link = document.createElement('a');
                     link.href = window.URL.createObjectURL(blob);

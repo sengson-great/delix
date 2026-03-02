@@ -26,7 +26,7 @@ class BulkPickupAssign extends FormRequest
         return [
             'merchant'   => 'required',
             'pickup_man' => 'required',
-            'parcels'    => 'required'
+            'parcels' => 'required|array|min:1',
         ];
     }
 }

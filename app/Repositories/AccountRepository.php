@@ -716,34 +716,75 @@ class AccountRepository implements AccountInterface
 
     public function receivedTransactionReverse($id)
     {
-
-        $parcel = Parcel::find($id);
-        $delivery_man = DeliveryMan::find($parcel->pickup_man_id);
-
-        $company_account = new CompanyAccount();
-        $company_account->parcel_id = $parcel->id;
-        $company_account->delivery_man_id = $delivery_man->id;
-        $company_account->date = date('Y-m-d');
-        $company_account->source = 'pickup_commission';
-        $company_account->type = 'income'; // previous expense
-        $company_account->details = 'parcel_pickup_commission_to_pickup_man_reversed';
-        $company_account->amount = $parcel->pickup_fee;
-        $company_account->save();
-
-        // pickup fee entry
-        $delivery_account = new DeliveryManAccount();
-        $delivery_account->delivery_man_id = $delivery_man->id;
-        $delivery_account->parcel_id = $parcel->id;
-        $delivery_account->company_account_id = $company_account->id;
-        $delivery_account->date = date('Y-m-d');
-        $delivery_account->source = 'pickup_commission';
-        $delivery_account->amount = $parcel->pickup_fee;
-        $delivery_account->type = 'income'; // // previous expense
-        $delivery_account->details = 'parcel_pickup_commission_received_reversed';
-        $delivery_account->save();
-
-        return true;
-
+        \Log::info('========== RECEIVED TRANSACTION REVERSE STARTED ==========');
+        \Log::info('Parcel ID: ' . $id);
+        
+        try {
+            $parcel = Parcel::find($id);
+            
+            if (!$parcel) {
+                \Log::error('Parcel not found with ID: ' . $id);
+                return false;
+            }
+            
+            \Log::info('Parcel found', [
+                'id' => $parcel->id,
+                'pickup_man_id' => $parcel->pickup_man_id,
+                'pickup_fee' => $parcel->pickup_fee
+            ]);
+            
+            // Check if pickup_man_id exists
+            if (!$parcel->pickup_man_id) {
+                \Log::warning('No pickup_man_id found for parcel: ' . $id);
+                return true; // Return true since there's nothing to reverse
+            }
+            
+            $delivery_man = DeliveryMan::find($parcel->pickup_man_id);
+            
+            if (!$delivery_man) {
+                \Log::error('Delivery man not found with ID: ' . $parcel->pickup_man_id);
+                return false;
+            }
+            
+            \Log::info('Delivery man found', ['id' => $delivery_man->id]);
+            
+            // Create company account entry
+            $company_account = new CompanyAccount();
+            $company_account->parcel_id = $parcel->id;
+            $company_account->delivery_man_id = $delivery_man->id;
+            $company_account->date = date('Y-m-d');
+            $company_account->source = 'pickup_commission';
+            $company_account->type = 'income'; // previous expense
+            $company_account->details = 'parcel_pickup_commission_to_pickup_man_reversed';
+            $company_account->amount = $parcel->pickup_fee ?? 0;
+            $company_account->save();
+            
+            \Log::info('Company account created', ['id' => $company_account->id]);
+            
+            // Create delivery man account entry
+            $delivery_account = new DeliveryManAccount();
+            $delivery_account->delivery_man_id = $delivery_man->id;
+            $delivery_account->parcel_id = $parcel->id;
+            $delivery_account->company_account_id = $company_account->id;
+            $delivery_account->date = date('Y-m-d');
+            $delivery_account->source = 'pickup_commission';
+            $delivery_account->amount = $parcel->pickup_fee ?? 0;
+            $delivery_account->type = 'income'; // previous expense
+            $delivery_account->details = 'parcel_pickup_commission_received_reversed';
+            $delivery_account->save();
+            
+            \Log::info('Delivery man account created', ['id' => $delivery_account->id]);
+            \Log::info('========== RECEIVED TRANSACTION REVERSE COMPLETED ==========');
+            
+            return true;
+            
+        } catch (\Exception $e) {
+            \Log::error('========== EXCEPTION IN RECEIVED TRANSACTION REVERSE ==========');
+            \Log::error('Message: ' . $e->getMessage());
+            \Log::error('File: ' . $e->getFile() . ':' . $e->getLine());
+            \Log::error('Trace: ' . $e->getTraceAsString());
+            return false;
+        }
     }
 
     public function returnTransactionReverse($id)
@@ -815,36 +856,55 @@ class AccountRepository implements AccountInterface
 
     }
 
-    public function incomeExpenseManageCancel($id, $status)
-    {
-        $parcel = Parcel::find($id);
-
-        if ($status == 'cancel') {
-
-            if (
-                $parcel->status == 'received' || $parcel->status == 'transferred-to-branch'
-                || $parcel->status == 'transferred-received-by-branch' || $parcel->status == 'delivery-assigned'
-                || $parcel->status == 're-schedule-delivery' || $parcel->status == 'returned-to-warehouse'
-                || $parcel->status == 'return-assigned-to-merchant'
-            ) {
-                $this->receivedTransactionReverse($id);
-            }
-
-        } elseif ($status == 'reverse-cancel') {
-
-            if (
-                $parcel->status_before_cancel == 'received' || $parcel->status_before_cancel == 'transferred-to-branch'
-                || $parcel->status_before_cancel == 'transferred-received-by-branch' || $parcel->status_before_cancel == 'delivery-assigned'
-                || $parcel->status_before_cancel == 're-schedule-delivery' || $parcel->status_before_cancel == 'returned-to-warehouse'
-                || $parcel->status_before_cancel == 'return-assigned-to-merchant'
-            ) {
-                $this->incomeExpenseManage($id, 'received', 'received-reverse');
-            }
-
-        }
-
-        return true;
+public function incomeExpenseManageCancel($id, $status)
+{
+    \Log::info('incomeExpenseManageCancel called', ['id' => $id, 'status' => $status]);
+    
+    $parcel = Parcel::find($id);
+    
+    if (!$parcel) {
+        \Log::error('Parcel not found in incomeExpenseManageCancel', ['id' => $id]);
+        return false;
     }
+    
+    if ($status == 'cancel') {
+        if (
+            $parcel->status == 'received' || $parcel->status == 'transferred-to-branch'
+            || $parcel->status == 'transferred-received-by-branch' || $parcel->status == 'delivery-assigned'
+            || $parcel->status == 're-schedule-delivery' || $parcel->status == 'returned-to-warehouse'
+            || $parcel->status == 'return-assigned-to-merchant'
+        ) {
+            \Log::info('Calling receivedTransactionReverse for parcel', ['id' => $id, 'status' => $parcel->status]);
+            
+            try {
+                $this->receivedTransactionReverse($id);
+                \Log::info('receivedTransactionReverse completed successfully');
+            } catch (\Exception $e) {
+                \Log::error('Error in receivedTransactionReverse: ' . $e->getMessage());
+                // Continue with cancellation even if this fails
+            }
+        }
+    } elseif ($status == 'reverse-cancel') {
+        if (
+            $parcel->status_before_cancel == 'received' || $parcel->status_before_cancel == 'transferred-to-branch'
+            || $parcel->status_before_cancel == 'transferred-received-by-branch' || $parcel->status_before_cancel == 'delivery-assigned'
+            || $parcel->status_before_cancel == 're-schedule-delivery' || $parcel->status_before_cancel == 'returned-to-warehouse'
+            || $parcel->status_before_cancel == 'return-assigned-to-merchant'
+        ) {
+            \Log::info('Calling incomeExpenseManage for reverse-cancel');
+            
+            try {
+                $this->incomeExpenseManage($id, 'received', 'received-reverse');
+                \Log::info('incomeExpenseManage completed successfully');
+            } catch (\Exception $e) {
+                \Log::error('Error in incomeExpenseManage: ' . $e->getMessage());
+                // Continue with reverse-cancel even if this fails
+            }
+        }
+    }
+    
+    return true;
+}
 
 
     public function creditStore($request)

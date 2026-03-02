@@ -229,7 +229,7 @@ class ParcelController extends Controller
 
             $my_delivery = Parcel::with('merchant', 'pickupMan.user', 'deliveryMan.user')
                                 ->where('delivery_man_id', $user->deliveryMan->id)
-                                ->whereIn('status', ['delivery-assigned', 're-schedule-delivery'])
+                                ->whereIn('status', ['delivery-assigned', 're-schedule-delivery', 'pending'])
                                 ->orderByDesc('id')
                                 ->skip($offset)
                                 ->take($limit)
@@ -467,7 +467,7 @@ class ParcelController extends Controller
             if ($parcel->status == 'delivered-and-verified'):
                 return $this->responseWithError(__('this_parcel_has_already_been_delivered_and_verified'), '', [], 422);
             endif;
-            if ($parcel->status != 'delivered' || $parcel->status != 'partially-delivered'):
+            if (!in_array($parcel->status, ['delivered', 'partially-delivered'])):
                 return $this->responseWithError(__('this_parcel_yet_not_delivered'), '', [], 422);
             endif;
 
@@ -581,108 +581,208 @@ class ParcelController extends Controller
 
     }
 
-    public function cancel(Request $request)
-    {
-        if (isDemoMode()) {
-            return $this->responseWithError(__('this_function_is_disabled_in_demo_server'));
-        }
-        DB::beginTransaction();
-        try{
-            $validator = Validator::make($request->all(),[
-                'id'    => 'required|max:50',
-                'cancel_note'  => 'required',
-            ]);
-
-            if ($validator->fails()){
-                return $this->responseWithError('required_field_missing', $validator->errors(), 422);
-            }
-
-            if (!$user = JWTAuth::parseToken()->authenticate()){
-                return $this->responseWithError(__('unauthorized_user'), '', 404);
-            }
-
-            $request['delivery_man'] = $user->deliveryMan->id;
-            $parcel                         = Parcel::find($request->id);
-
-            if ($parcel->status == 'cancel'):
-                return $this->responseWithError(__('this_parcel_has_already_been_cancelled'));
-            endif;
-
-            if ($parcel->status == 'received' || $parcel->status == 'delivered' || $parcel->status == 'partially-delivered' || $parcel->status == 'delivered-and-verified' || $parcel->status == 'returned-to-merchant'):
-                return $this->responseWithError(__('this_parcel_can_not_be_cancelled'));
-            endif;
-
-            $this->accounts->incomeExpenseManageCancel($request->id, 'cancel');
-
-
-            $parcel->status_before_cancel   = $parcel->status;
-            $parcel->status                 = 'cancel';
-            $parcel->date                   = date('Y-m-d');
-            $parcel->save();
-
-            $this->parcelEvent($parcel->id, 'parcel_cancel_event', $request->cancel_note, $user->id);
-
-            DB::commit();
-            return $this->responseWithSuccess(__('successfully_cancelled'), '', [], 200);
-
-        } catch (\Exception $e) {
-            DB::rollback();
-            return $this->responseWithError(__('something_went_wrong_please_try_again'), '', [], 500);
-        }
+public function cancel(Request $request)
+{
+    \Log::info('========== CANCEL METHOD STARTED ==========');
+    \Log::info('Request data:', $request->all());
+    
+    if (isDemoMode()) {
+        \Log::info('Demo mode detected');
+        return $this->responseWithError(__('this_function_is_disabled_in_demo_server'));
     }
+    
+    DB::beginTransaction();
+    try{
+        \Log::info('Step 1: Validating request');
+        $validator = Validator::make($request->all(),[
+            'id'    => 'required|max:50',
+            'cancel_note'  => 'required',
+        ]);
 
-    public function delivery(Request $request)
-    {
-        if (isDemoMode()) {
-            return $this->responseWithError(__('this_function_is_disabled_in_demo_server'));
+        if ($validator->fails()){
+            \Log::info('Validation failed:', $validator->errors()->toArray());
+            return $this->responseWithError('required_field_missing', $validator->errors(), 422);
         }
-        DB::beginTransaction();
-        try{
-            $validator = Validator::make($request->all(),[
-                'id'    => 'required|max:50',
-            ]);
 
-            if ($validator->fails()){
-                return $this->responseWithError('required_field_missing', $validator->errors(), 422);
+        \Log::info('Step 2: Authenticating user');
+        if (!$user = JWTAuth::parseToken()->authenticate()){
+            \Log::info('User authentication failed');
+            return $this->responseWithError(__('unauthorized_user'), '', 404);
+        }
+        \Log::info('User authenticated:', ['user_id' => $user->id]);
+
+        $request['delivery_man'] = $user->deliveryMan->id;
+        \Log::info('Step 3: Finding parcel with ID: ' . $request->id);
+        $parcel = Parcel::find($request->id);
+
+        if (!$parcel) {
+            \Log::info('Parcel not found');
+            return $this->responseWithError(__('parcel_not_found'), '', 404);
+        }
+        \Log::info('Parcel found:', ['parcel_id' => $parcel->id, 'status' => $parcel->status]);
+
+        if ($parcel->status == 'cancel'):
+            \Log::info('Parcel already cancelled');
+            return $this->responseWithError(__('this_parcel_has_already_been_cancelled'));
+        endif;
+
+        if ($parcel->status == 'received' || $parcel->status == 'delivered' || $parcel->status == 'partially-delivered' || $parcel->status == 'delivered-and-verified' || $parcel->status == 'returned-to-merchant'):
+            \Log::info('Parcel cannot be cancelled due to status:', ['status' => $parcel->status]);
+            return $this->responseWithError(__('this_parcel_can_not_be_cancelled'));
+        endif;
+
+        \Log::info('Step 4: Calling incomeExpenseManageCancel');
+        $this->accounts->incomeExpenseManageCancel($request->id, 'cancel');
+
+        \Log::info('Step 5: Updating parcel status');
+        $parcel->status_before_cancel   = $parcel->status;
+        $parcel->status                 = 'cancel';
+        $parcel->date                   = date('Y-m-d');
+        $parcel->save();
+
+        \Log::info('Step 6: Calling parcelEvent');
+        $this->parcelEvent($parcel->id, 'parcel_cancel_event', $request->cancel_note, $user->id);
+
+        DB::commit();
+        \Log::info('========== CANCEL METHOD COMPLETED SUCCESSFULLY ==========');
+        return $this->responseWithSuccess(__('successfully_cancelled'), '', [], 200);
+
+    } catch (\Exception $e) {
+        DB::rollback();
+        \Log::error('========== EXCEPTION IN CANCEL METHOD ==========');
+        \Log::error('Message: ' . $e->getMessage());
+        \Log::error('File: ' . $e->getFile() . ':' . $e->getLine());
+        \Log::error('Trace: ' . $e->getTraceAsString());
+        return $this->responseWithError(__('something_went_wrong_please_try_again'), '', [], 500);
+    }
+}
+
+public function delivery(Request $request)
+{
+    if (isDemoMode()) {
+        return $this->responseWithError(__('this_function_is_disabled_in_demo_server'));
+    }
+    
+    DB::beginTransaction();
+    try{
+        // Log the incoming request
+        \Log::info('========== DELIVERY METHOD STARTED ==========');
+        \Log::info('Request data:', $request->all());
+        
+        $validator = Validator::make($request->all(),[
+            'id'    => 'required|max:50',
+        ]);
+
+        if ($validator->fails()){
+            \Log::error('Validation failed:', $validator->errors()->toArray());
+            return $this->responseWithError('required_field_missing', $validator->errors(), 422);
+        }
+
+        if (!$user = JWTAuth::parseToken()->authenticate()){
+            \Log::error('User authentication failed');
+            return $this->responseWithError(__('unauthorized_user'), '', [], 404);
+        }
+        
+        \Log::info('User authenticated:', ['user_id' => $user->id]);
+
+        $parcel = Parcel::find($request->id);
+        
+        if (!$parcel) {
+            \Log::error('Parcel not found:', ['id' => $request->id]);
+            return $this->responseWithError(__('parcel_not_found'), '', [], 404);
+        }
+        
+        \Log::info('Parcel found:', [
+            'id' => $parcel->id,
+            'status' => $parcel->status,
+            'delivery_man_id' => $parcel->delivery_man_id
+        ]);
+
+        if (in_array($parcel->status, ['delivered', 'delivered-and-verified', 'partially-delivered'])) {
+            \Log::warning('Parcel already delivered:', ['status' => $parcel->status]);
+            return $this->responseWithError(__('this_parcel_has_already_confirmed_as_delivered'),  '', [], 422);
+        }
+
+        $parcel->date = date('Y-m-d');
+        $parcel->status = 'delivered';
+
+        // Check if accounts exists and method exists
+        \Log::info('Calling incomeExpenseManage...');
+        if ($this->accounts && method_exists($this->accounts, 'incomeExpenseManage')) {
+            try {
+                $this->accounts->incomeExpenseManage($request->id, 'delivered');
+                \Log::info('incomeExpenseManage completed');
+            } catch (\Exception $e) {
+                \Log::error('Error in incomeExpenseManage: ' . $e->getMessage());
             }
+        } else {
+            \Log::warning('incomeExpenseManage method not found or accounts not set');
+        }
 
-            if (!$user = JWTAuth::parseToken()->authenticate()){
-                return $this->responseWithError(__('unauthorized_user'), '', [], 404);
-            }
-
-            $parcel                 = Parcel::find($request->id);
-
-
-            if ($parcel->status == 'delivered' || $parcel->status == 'delivered-and-verified' || $parcel->status == 'partially-delivered'):
-                return $this->responseWithError(__('this_parcel_has_already_confirmed_as_delivered'),  '', [], 422);
-            endif;
-
-            $parcel->date           = date('Y-m-d');
-            $parcel->status         = 'delivered';
-
-            $this->accounts->incomeExpenseManage($request->id, 'delivered');
-
-            $parcel->otp = rand(1000,9999);
+        $parcel->otp = rand(1000, 9999);
+        \Log::info('Generated OTP: ' . $parcel->otp);
+        
+        // Call parcel event
+        \Log::info('Calling parcelEvent...');
+        try {
             $this->parcelEvent($parcel->id, 'parcel_delivered_event', $request->note, $user->id);
+            \Log::info('parcelEvent completed');
+        } catch (\Exception $e) {
+            \Log::error('Error in parcelEvent: ' . $e->getMessage());
+        }
 
-            $sms_template = CustomerParcelSmsTemplates::where('subject','delivery_confirm_otp')->first();
-
-            $sms_body = str_replace('{merchant_name}', $parcel->merchant->company, $sms_template->content);
+        // Handle SMS
+        \Log::info('Checking SMS template...');
+        $sms_template = CustomerParcelSmsTemplates::where('subject','delivery_confirm_otp')->first();
+        
+        if ($sms_template) {
+            \Log::info('SMS template found');
+            
+            // Check if merchant exists
+            $merchantName = $parcel->merchant->company ?? 'Merchant';
+            \Log::info('Merchant name: ' . $merchantName);
+            
+            $sms_body = str_replace('{merchant_name}', $merchantName, $sms_template->content);
             $sms_body = str_replace('{parcel_id}', $parcel->parcel_no, $sms_body);
             $sms_body = str_replace('{otp}', $parcel->otp, $sms_body);
             $sms_body = str_replace('{our_company_name}', __('app_name'), $sms_body);
 
-            $parcel->save();
-            if($sms_template->sms_to_customer):
-                $this->test('delivery_confirm_otp', $parcel->customer_phone_number, $sms_body, $sms_template->masking);
-            endif;
-            DB::commit();
-            return $this->responseWithSuccess(__('successfully_delivered'), '', [], 200);
-        } catch (\Exception $e) {
-            DB::rollback();
-            return $this->responseWithError(__('something_went_wrong_please_try_again'), '', [], 500);
+            if($sms_template->sms_to_customer && $parcel->customer_phone_number) {
+                \Log::info('Sending SMS to: ' . $parcel->customer_phone_number);
+                try {
+                    $this->test('delivery_confirm_otp', $parcel->customer_phone_number, $sms_body, $sms_template->masking);
+                    \Log::info('SMS sent successfully');
+                } catch (\Exception $e) {
+                    \Log::error('Error sending SMS: ' . $e->getMessage());
+                }
+            } else {
+                \Log::info('SMS not sent - conditions not met', [
+                    'sms_to_customer' => $sms_template->sms_to_customer,
+                    'has_phone' => !empty($parcel->customer_phone_number)
+                ]);
+            }
+        } else {
+            \Log::warning('SMS template not found for delivery_confirm_otp');
         }
+
+        $parcel->save();
+        \Log::info('Parcel saved successfully');
+        
+        DB::commit();
+        \Log::info('Transaction committed');
+        
+        return $this->responseWithSuccess(__('successfully_delivered'), ['otp' => $parcel->otp], [], 200);
+        
+    } catch (\Exception $e) {
+        DB::rollback();
+        \Log::error('========== EXCEPTION IN DELIVERY METHOD ==========');
+        \Log::error('Message: ' . $e->getMessage());
+        \Log::error('File: ' . $e->getFile() . ':' . $e->getLine());
+        \Log::error('Trace: ' . $e->getTraceAsString());
+        
+        return $this->responseWithError(__('something_went_wrong_please_try_again'), '', [], 500);
     }
+}
 
     public function parcelDetails($id)
     {
@@ -765,68 +865,125 @@ class ParcelController extends Controller
 
     public function parcelEvent($parcel_id, $title, $cancel_note = '', $user_id)
     {
-        $parcel = $this->parcels->get($parcel_id);
-        $parcel_event                      = new ParcelEvent();
-
-        $parcel_event->parcel_id           = $parcel_id;
-        $parcel_event->delivery_man_id     = $parcel->delivery_man_id;
-        $parcel_event->pickup_man_id       = $parcel->pickup_man_id;
-        $parcel_event->user_id             = $user_id;
-        $parcel_event->title               = $title;
-        $parcel_event->cancel_note         = $cancel_note;
-
-        $parcel_event->save();
-
-        $delivery_person = DeliveryMan::where('id',$parcel->delivery_man_id)->first();
-        $pickup_person   = DeliveryMan::where('id',$parcel->pickup_man_id)->first();
-
-        // merchant sms start
-        $sms_template = SmsTemplate::where('subject',$title)->first();
-
-        $sms_body = str_replace('{merchant_name}', $parcel->merchant->company, $sms_template->content);
-        $sms_body = str_replace('{parcel_id}', $parcel->parcel_no, $sms_body);
-        $sms_body = str_replace('{pickup_date_time}',  date('M d, Y', strtotime($parcel->pickup_date)), $sms_body);
-        $sms_body = str_replace('{re_pickup_date_time}', date('M d, Y', strtotime($parcel->pickup_date)), $sms_body);
-        $sms_body = str_replace('{delivery_date_time}', date('M d, Y', strtotime($parcel->delivery_date)), $sms_body);
-        $sms_body = str_replace('{re_delivery_date_time}', date('M d, Y', strtotime($parcel->delivery_date)), $sms_body);
-        $sms_body = str_replace('{current_date_time}', date('M d, Y h:i a'), $sms_body);
-        $sms_body = str_replace('{return_date_time}', date('M d, Y h:i a'), $sms_body);
-        $sms_body = str_replace('{our_company_name}', __('app_name'), $sms_body);
-        $sms_body = str_replace('{pickup_man_name}', @$pickup_person->user->first_name, $sms_body);
-        $sms_body = str_replace('{pickup_man_phone}', @$pickup_person->phone_number, $sms_body);
-        $sms_body = str_replace('{delivery_man_name}', @$delivery_person->user->first_name, $sms_body);
-        $sms_body = str_replace('{delivery_man_phone}', @$delivery_person->phone_number, $sms_body);
-        $sms_body = str_replace('{cancel_note}', @$parcel->cancelnote->cancel_note, $sms_body);
-        $sms_body = str_replace('{price}', @$parcel->price, $sms_body);
-        if($sms_template->sms_to_merchant):
-            $this->test($title, $parcel->merchant->phone_number, $sms_body, $sms_template->masking);
-        endif;
-        //merchant sms end
-
-        //customer sms start
-        $customer_sms_template = CustomerParcelSmsTemplates::where('subject',$title)->first();
-        $sms_body = str_replace('{merchant_name}', $parcel->merchant->company, $customer_sms_template->content);
-        $sms_body = str_replace('{parcel_id}', $parcel->parcel_no, $sms_body);
-        $sms_body = str_replace('{pickup_date_time}',  date('M d, Y', strtotime($parcel->pickup_date)), $sms_body);
-        $sms_body = str_replace('{re_pickup_date_time}', date('M d, Y', strtotime($parcel->pickup_date)), $sms_body);
-        $sms_body = str_replace('{delivery_date_time}', date('M d, Y', strtotime($parcel->delivery_date)), $sms_body);
-        $sms_body = str_replace('{re_delivery_date_time}', date('M d, Y', strtotime($parcel->delivery_date)), $sms_body);
-        $sms_body = str_replace('{current_date_time}', date('M d, Y h:i a'), $sms_body);
-        $sms_body = str_replace('{return_date_time}', date('M d, Y h:i a'), $sms_body);
-        $sms_body = str_replace('{our_company_name}', __('app_name'), $sms_body);
-        $sms_body = str_replace('{pickup_man_name}', @$pickup_person->user->first_name, $sms_body);
-        $sms_body = str_replace('{pickup_man_phone}', @$pickup_person->phone_number, $sms_body);
-        $sms_body = str_replace('{delivery_man_name}', @$delivery_person->user->first_name, $sms_body);
-        $sms_body = str_replace('{delivery_man_phone}', @$delivery_person->phone_number, $sms_body);
-        $sms_body = str_replace('{cancel_note}', @$parcel->cancelnote->cancel_note, $sms_body);
-        $sms_body = str_replace('{price}', @$parcel->price, $sms_body);
-
-        if($customer_sms_template->sms_to_customer):
-            $this->test($title, $parcel->customer_phone_number, $sms_body, $customer_sms_template->masking);
-        endif;
-        //customer sms end
-
-        return true;
+        \Log::info('========== PARCEL EVENT STARTED ==========');
+        \Log::info('Parameters:', [
+            'parcel_id' => $parcel_id,
+            'title' => $title,
+            'cancel_note' => $cancel_note,
+            'user_id' => $user_id
+        ]);
+        
+        try {
+            $parcel = $this->parcels->get($parcel_id);
+            
+            if (!$parcel) {
+                \Log::error('Parcel not found with ID: ' . $parcel_id);
+                return false;
+            }
+            
+            \Log::info('Parcel found', ['id' => $parcel->id]);
+            
+            // Create parcel event
+            $parcel_event = new ParcelEvent();
+            $parcel_event->parcel_id = $parcel_id;
+            $parcel_event->delivery_man_id = $parcel->delivery_man_id;
+            $parcel_event->pickup_man_id = $parcel->pickup_man_id;
+            $parcel_event->user_id = $user_id;
+            $parcel_event->title = $title;
+            $parcel_event->cancel_note = $cancel_note;
+            $parcel_event->save();
+            
+            \Log::info('Parcel event created', ['event_id' => $parcel_event->id]);
+            
+            // Get delivery and pickup persons
+            $delivery_person = null;
+            if ($parcel->delivery_man_id) {
+                $delivery_person = DeliveryMan::find($parcel->delivery_man_id);
+            }
+            
+            $pickup_person = null;
+            if ($parcel->pickup_man_id) {
+                $pickup_person = DeliveryMan::find($parcel->pickup_man_id);
+            }
+            
+            // Merchant SMS
+            try {
+                $sms_template = SmsTemplate::where('subject', $title)->first();
+                
+                if ($sms_template && $sms_template->content) {
+                    \Log::info('Merchant SMS template found', ['template_id' => $sms_template->id]);
+                    
+                    $sms_body = str_replace('{merchant_name}', $parcel->merchant->company ?? 'N/A', $sms_template->content);
+                    $sms_body = str_replace('{parcel_id}', $parcel->parcel_no ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{pickup_date_time}', date('M d, Y', strtotime($parcel->pickup_date)) ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{re_pickup_date_time}', date('M d, Y', strtotime($parcel->pickup_date)) ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{delivery_date_time}', date('M d, Y', strtotime($parcel->delivery_date)) ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{re_delivery_date_time}', date('M d, Y', strtotime($parcel->delivery_date)) ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{current_date_time}', date('M d, Y h:i a'), $sms_body);
+                    $sms_body = str_replace('{return_date_time}', date('M d, Y h:i a'), $sms_body);
+                    $sms_body = str_replace('{our_company_name}', __('app_name'), $sms_body);
+                    $sms_body = str_replace('{pickup_man_name}', $pickup_person->user->first_name ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{pickup_man_phone}', $pickup_person->phone_number ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{delivery_man_name}', $delivery_person->user->first_name ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{delivery_man_phone}', $delivery_person->phone_number ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{cancel_note}', $cancel_note, $sms_body);
+                    $sms_body = str_replace('{price}', $parcel->price ?? '0', $sms_body);
+                    
+                    if ($sms_template->sms_to_merchant && $parcel->merchant && $parcel->merchant->phone_number) {
+                        $this->test($title, $parcel->merchant->phone_number, $sms_body, $sms_template->masking);
+                        \Log::info('Merchant SMS sent');
+                    }
+                } else {
+                    \Log::warning('Merchant SMS template not found for subject: ' . $title);
+                }
+            } catch (\Exception $e) {
+                \Log::error('Error sending merchant SMS: ' . $e->getMessage());
+            }
+            
+            // Customer SMS
+            try {
+                $customer_sms_template = CustomerParcelSmsTemplates::where('subject', $title)->first();
+                
+                if ($customer_sms_template && $customer_sms_template->content) {
+                    \Log::info('Customer SMS template found', ['template_id' => $customer_sms_template->id]);
+                    
+                    $sms_body = str_replace('{merchant_name}', $parcel->merchant->company ?? 'N/A', $customer_sms_template->content);
+                    $sms_body = str_replace('{parcel_id}', $parcel->parcel_no ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{pickup_date_time}', date('M d, Y', strtotime($parcel->pickup_date)) ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{re_pickup_date_time}', date('M d, Y', strtotime($parcel->pickup_date)) ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{delivery_date_time}', date('M d, Y', strtotime($parcel->delivery_date)) ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{re_delivery_date_time}', date('M d, Y', strtotime($parcel->delivery_date)) ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{current_date_time}', date('M d, Y h:i a'), $sms_body);
+                    $sms_body = str_replace('{return_date_time}', date('M d, Y h:i a'), $sms_body);
+                    $sms_body = str_replace('{our_company_name}', __('app_name'), $sms_body);
+                    $sms_body = str_replace('{pickup_man_name}', $pickup_person->user->first_name ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{pickup_man_phone}', $pickup_person->phone_number ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{delivery_man_name}', $delivery_person->user->first_name ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{delivery_man_phone}', $delivery_person->phone_number ?? 'N/A', $sms_body);
+                    $sms_body = str_replace('{cancel_note}', $cancel_note, $sms_body);
+                    $sms_body = str_replace('{price}', $parcel->price ?? '0', $sms_body);
+                    
+                    if ($customer_sms_template->sms_to_customer && $parcel->customer_phone_number) {
+                        $this->test($title, $parcel->customer_phone_number, $sms_body, $customer_sms_template->masking);
+                        \Log::info('Customer SMS sent');
+                    }
+                } else {
+                    \Log::warning('Customer SMS template not found for subject: ' . $title);
+                }
+            } catch (\Exception $e) {
+                \Log::error('Error sending customer SMS: ' . $e->getMessage());
+            }
+            
+            \Log::info('========== PARCEL EVENT COMPLETED ==========');
+            return true;
+            
+        } catch (\Exception $e) {
+            \Log::error('========== EXCEPTION IN PARCEL EVENT ==========');
+            \Log::error('Message: ' . $e->getMessage());
+            \Log::error('File: ' . $e->getFile() . ':' . $e->getLine());
+            \Log::error('Trace: ' . $e->getTraceAsString());
+            return false;
+        }
     }
 
     public function track($id)

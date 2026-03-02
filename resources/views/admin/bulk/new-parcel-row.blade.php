@@ -1,6 +1,6 @@
 <tr id="row_{{$parcel->parcel_no}}">
     <td>
-        <input type="text" name="parcel_list[]" hidden value="{{$parcel->id}}">
+        <input type="text" name="parcels[]" hidden value="{{$parcel->id}}">
         <span>{{ $val }}</span>
     </td>
     <td>

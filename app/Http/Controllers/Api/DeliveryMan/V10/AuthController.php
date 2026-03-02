@@ -255,7 +255,7 @@ class AuthController extends Controller
                 'parcel_statistics' => [
                     'assigned'              => Parcel::whereDate('created_at', '>=', $filter_start_date)
                                                 ->whereDate('created_at', '<=', $filter_end_date)->where('delivery_man_id', $user->deliveryMan->id)
-                                                ->whereIn('status', ['delivery-assigned', 're-schedule-delivery'])
+                                                ->whereIn('status', ['delivery-assigned', 're-schedule-delivery', 'pending'])
                                                 ->count(),
                     'delivered'             => Parcel::whereDate('created_at', '>=', $filter_start_date)
                                                 ->whereDate('created_at', '<=', $filter_end_date)->where('delivery_man_id', $user->deliveryMan->id)
@@ -360,7 +360,9 @@ class AuthController extends Controller
 
             $total_earning                            = $total_pickup_delivery_commission_expense;
             $total_cash_collect_income                = DeliveryManAccount::whereDate('created_at', '>=', $filter_start_date)
-                                                        ->whereDate('created_at', '<=', $filter_end_date)->where('source', 'cash_collection')
+                                                        ->whereDate('created_at', '<=', $filter_end_date)
+                                                        //->where('source', 'cash_collection')
+                                                        ->where('source', 'opening_balance')
                                                         ->where('type', 'income')
                                                         ->where('delivery_man_id', $user->deliveryMan->id)
                                                         ->sum('amount');
@@ -1227,12 +1229,12 @@ class AuthController extends Controller
     public function totalReport($user)
     {
         // Calculate financial statistics
-        $total_pickup_delivery_commission_income   = DeliveryManAccount::whereIn('source', ['pickup_commission', 'parcel_delivery', 'parcel_return'])
+        $total_pickup_delivery_commission_income   = DeliveryManAccount::whereIn('source', ['pickup_commission', 'parcel_delivery', 'parcel_return', 'cash_collection'])
                                                                     ->where('type', 'income')
                                                                     ->where('delivery_man_id', $user->deliveryMan->id)
                                                                     ->sum('amount');
-        $total_pickup_delivery_commission_expense  = DeliveryManAccount::whereIn('source', ['pickup_commission', 'parcel_delivery', 'parcel_return'])
-                                                                    ->where('type', 'expense')
+        $total_pickup_delivery_commission_expense  = DeliveryManAccount::whereIn('source', ['pickup_commission', 'parcel_delivery', 'parcel_return', 'cash_collection'])
+                                                                    ->where('type', 'income')
                                                                     ->where('delivery_man_id', $user->deliveryMan->id)
                                                                     ->sum('amount');
 
@@ -1254,6 +1256,7 @@ class AuthController extends Controller
 
         // $data['pending_amount']             = number_format($total_cash_collect_income - $total_cash_collect_expense, 2) . ' ' . __('tk');
         $data['total_earning']              = $total_earning;
+        //$data['total_earning'] = $total_pickup_delivery_commission_expense;
         $data['commission_received']        = $total_pickup_delivery_commission_income;
         $data['cash_collect']               = $total_cash_collect_income;
         $data['deposit']                    = $total_cash_collect_expense;
