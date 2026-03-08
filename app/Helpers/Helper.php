@@ -445,9 +445,18 @@
 
     function hasPermission($key_word)
     {
-        if (in_array($key_word, \Sentinel::getUser()->permissions)) {
+        $user = \Sentinel::getUser();
+        
+        if (!$user) {
+            return false;
+        }
+        
+        $permissions = $user->permissions;
+        
+        if (is_array($permissions) && in_array($key_word, $permissions)) {
             return true;
         }
+        
         return false;
     }
 
