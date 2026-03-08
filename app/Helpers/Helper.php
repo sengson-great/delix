@@ -474,10 +474,10 @@
     }
 
     if (!function_exists('get_yrsetting')) {
-
         function get_yrsetting($setting_for)
         {
-            return config()->get('lmssetting.' . $setting_for);
+            $config = config()->get('lmssetting.' . $setting_for);
+            return is_array($config) ? $config : [];
         }
     }
 
